@@ -173,7 +173,7 @@
         function closeWindow() { ipcRenderer.send('close-window'); }
         function openLogFile() { ipcRenderer.send('open-log-file'); }
         function openReportGenerator() { ipcRenderer.send('open-report-generator'); }
-        function openGitHub() { shell.openExternal('https://www.google.com/'); }
+        function openGitHub() { shell.openExternal('https://github.com/montezma/rndr-node-monitor'); }
         function toggleTheme() { ipcRenderer.send('toggle-theme'); }
         ipcRenderer.on('theme-changed', (event, theme) => { document.body.className = theme === 'light' ? 'light' : ''; });
         
