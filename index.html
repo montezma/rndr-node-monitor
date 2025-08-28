@@ -165,7 +165,23 @@
             hostingToggle.checked = true;
             selectNode('local');
             updateNextEpoch();
-            setInterval(updateNextEpoch, 60 * 60 * 1000);
+            
+
+            setInterval(() => {
+                updateNextEpoch();
+                let lastFrameTime = null;
+                if (selectedNodeName === 'local' && localData.stats) {
+                    lastFrameTime = localData.stats.lastFrameTime;
+                } else if (selectedNodeName !== 'local') {
+                    const node = networkNodes.find(n => n.name === selectedNodeName);
+                    if (node && node.data && node.data.stats) {
+                        lastFrameTime = node.data.stats.lastFrameTime;
+                    }
+                }
+                if (lastFrameTime) {
+                    updateTimeAgo(new Date(lastFrameTime));
+                }
+            }, 30000);
         });
 
         function minimizeWindow() { ipcRenderer.send('minimize-window'); }

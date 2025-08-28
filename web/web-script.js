@@ -224,16 +224,16 @@ function connect() {
 
 document.addEventListener('DOMContentLoaded', () => {
     updateNextEpoch();
-    setInterval(updateNextEpoch, 60 * 60 * 1000);
-    
-setInterval(() => {
-        const lastFrameElement = document.getElementById('lastFrameTime');
-        if (lastFrameElement && lastFrameElement.textContent.includes('/')) {
-            const lastTime = new Date(lastFrameElement.textContent);
-            if (!isNaN(lastTime)) {
-                updateTimeAgo(lastTime);
+
+    setInterval(() => {
+        updateNextEpoch();
+        if (selectedNodeName && allNodes.length > 0) {
+            const node = allNodes.find(n => n.name === selectedNodeName);
+            if (node && node.data && node.data.stats && node.data.stats.lastFrameTime) {
+                updateTimeAgo(new Date(node.data.stats.lastFrameTime));
             }
         }
-    }, 10000);
+    }, 30000);
+
     connect();
 });
