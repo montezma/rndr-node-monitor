@@ -94,7 +94,7 @@ function startApiServer() {
 function manageWebServer() {
     const state = loadState();
     if (iAmWebServerHost && !webServer && state.isHostingEnabled) {
-        console.log(`✨ This node (${os.hostname()}) is now the web host.`);
+        console.log(`This node (${os.hostname()}) is now the web host.`);
         const webApp = express();
         webApp.use(express.static(path.join(__dirname, 'web')));
         webApp.get('/web-script.js', (req, res) => res.sendFile(path.join(__dirname, 'web', 'web-script.js')));
@@ -113,7 +113,7 @@ function manageWebServer() {
             bonjour.publish({ name: 'RNDR Monitor', type: 'http', port: WEB_PORT, host: 'render.local' });
         });
     } else if ((!iAmWebServerHost || !state.isHostingEnabled) && webServer) {
-        console.log(`🔌 This node (${os.hostname()}) is no longer the web host.`);
+        console.log(`This node (${os.hostname()}) is no longer the web host.`);
         if (bonjour) {
             bonjour.unpublishAll(() => {
                 bonjour.destroy();
@@ -274,22 +274,35 @@ function checkInitialStatus() {
 }
 
 function loadState() {
-  try {
-    if (fs.existsSync(STATE_FILE)) {
-      const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-      return {
-          isHostingEnabled: data.isHostingEnabled !== undefined ? data.isHostingEnabled : true,
-          ...data
-      };
+    const defaults = {
+        isHostingEnabled: true,
+        lastPosition: 0,
+        stats: { 
+            lifetimeFrames: { successful: 0, failed: 0 }, 
+            dailyFrames: { successful: 0, failed: 0 },
+            epochFrames: { successful: 0, failed: 0 },
+            lastFrameTime: null 
+        },
+        gpuInfo: [],
+        rndrStatus: false,
+        watchdogStatus: false
+    };
+
+    if (!fs.existsSync(STATE_FILE)) {
+        return defaults;
     }
-  } catch (err) { console.error('Error loading state:', err); }
-  
-  return {
-    isHostingEnabled: true,
-    lastPosition: 0,
-    stats: { lifetimeFrames: { successful: 0, failed: 0 }, dailyFrames: { successful: 0, failed: 0 }, lastFrameTime: null },
-    frameHistory: []
-  };
+
+    try {
+        const savedState = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+        
+        const mergedState = { ...defaults, ...savedState };
+        mergedState.stats = { ...defaults.stats, ...(savedState.stats || {}) };
+        
+        return mergedState;
+    } catch (err) {
+        console.error('Error loading or merging state, returning defaults:', err);
+        return defaults;
+    }
 }
 
 function saveState(state) {
@@ -354,14 +367,22 @@ function parseLine(line, state) {
   
   const lineTime = new Date(timestamp).getTime();
   const dayAgo = Date.now() - (24 * 60 * 60 * 1000);
+  const currentEpochStart = getEpochStart(new Date()).getTime();
+
+  if (state.stats.lastFrameTime && new Date(state.stats.lastFrameTime).getTime() < currentEpochStart && lineTime >= currentEpochStart) {
+      console.log("New epoch detected, resetting live epoch stats.");
+      state.stats.epochFrames = { successful: 0, failed: 0 };
+  }
 
   if (line.includes('job completed successfully')) {
     state.stats.lifetimeFrames.successful++;
     if (lineTime > dayAgo) state.stats.dailyFrames.successful++;
+    if (lineTime >= currentEpochStart) state.stats.epochFrames.successful++;
     state.stats.lastFrameTime = timestamp;
   } else if (line.includes('job failed')) {
     state.stats.lifetimeFrames.failed++;
     if (lineTime > dayAgo) state.stats.dailyFrames.failed++;
+    if (lineTime >= currentEpochStart) state.stats.epochFrames.failed++;
   }
 }
 
@@ -376,7 +397,7 @@ function extractRenderTime(line) {
 }
 
 function getEpochStart(date) {
-    const anchorTime = Date.UTC(2025, 7, 26, 23, 17, 23);
+    const anchorTime = Date.UTC(2025, 7, 26, 23, 17, 23); // Aug 26 2025 23:17:23 UTC
     const epochDuration = 7 * 24 * 60 * 60 * 1000;
     const targetTime = date.getTime();
     const timeSinceAnchor = targetTime - anchorTime;

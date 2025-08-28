@@ -141,7 +141,7 @@
             </div>
             <div class="stats-grid">
                  <div class="stat-card"><h4>24 Hour Frames</h4><div class="stat-value" id="dailyTotal">0</div><div class="stat-breakdown"><div class="stat-item"><div class="stat-item-value" id="dailySuccess" style="color: var(--success)">0</div><div class="stat-item-label">Successful</div></div><div class="stat-item"><div class="stat-item-value" id="dailyFailed" style="color: var(--error)">0</div><div class="stat-item-label">Failed</div></div></div></div>
-                 <div class="stat-card"><h4>Epoch Frames (Live)</h4><div class="stat-value" id="epochTotal">0</div><div class="stat-breakdown"><div class="stat-item"><div class="stat-item-value" id="epochSuccess" style="color: var(--success)">0</div><div class="stat-item-label">Successful</div></div><div class="stat-item"><div class="stat-item-value" id="epochFailed" style="color: var(--error)">0</div><div class="stat-item-label">Failed</div></div></div><div class="stat-label" style="margin-top: 10px">Next epoch: <span id="nextEpoch">Calculating...</span></div></div>
+                 <div class="stat-card"><h4>Epoch Frames</h4><div class="stat-value" id="epochTotal">0</div><div class="stat-breakdown"><div class="stat-item"><div class="stat-item-value" id="epochSuccess" style="color: var(--success)">0</div><div class="stat-item-label">Successful</div></div><div class="stat-item"><div class="stat-item-value" id="epochFailed" style="color: var(--error)">0</div><div class="stat-item-label">Failed</div></div></div><div class="stat-label" style="margin-top: 10px">Next epoch: <span id="nextEpoch">Calculating...</span></div></div>
                  <div class="stat-card"><h4>Lifetime Frames</h4><div class="stat-value" id="lifetimeTotal">0</div><div class="stat-breakdown"><div class="stat-item"><div class="stat-item-value" id="lifetimeSuccess" style="color: var(--success)">0</div><div class="stat-item-label">Successful</div></div><div class="stat-item"><div class="stat-item-value" id="lifetimeFailed" style="color: var(--error)">0</div><div class="stat-item-label">Failed</div></div></div></div>
             </div>
             <div class="gpu-section"><h4 style="font-size: 12px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 15px; letter-spacing: 0.5px;">GPU Status</h4><div class="gpu-grid" id="gpuGrid"></div></div>
@@ -167,13 +167,13 @@
             updateNextEpoch();
             setInterval(updateNextEpoch, 60 * 60 * 1000);
         });
-        
+
         function minimizeWindow() { ipcRenderer.send('minimize-window'); }
         function maximizeWindow() { ipcRenderer.send('maximize-window'); }
         function closeWindow() { ipcRenderer.send('close-window'); }
         function openLogFile() { ipcRenderer.send('open-log-file'); }
-        function openReportGenerator() { ipcRenderer.send('open-report-generator'); }
         function openGitHub() { shell.openExternal('https://github.com/montezma/rndr-node-monitor'); }
+        function openReportGenerator() { ipcRenderer.send('open-report-generator'); }
         function toggleTheme() { ipcRenderer.send('toggle-theme'); }
         ipcRenderer.on('theme-changed', (event, theme) => { document.body.className = theme === 'light' ? 'light' : ''; });
         
@@ -202,26 +202,25 @@
         });
         ipcRenderer.on('log-line', (event, line) => {
             if (line.trim()) {
-                localData.logEntries.unshift({ text: line, className: getLogEntryClass(line) });
-                if (localData.logEntries.length > MAX_LOG_ENTRIES) localData.logEntries.pop();
-                if (selectedNodeName === 'local') displayLogEntries(localData.logEntries);
+                localData.logEntries.push({ text: line, className: getLogEntryClass(line) });
+                if (localData.logEntries.length > MAX_LOG_ENTRIES) {
+                    localData.logEntries.shift();
+                }
+                if (selectedNodeName === 'local') {
+                    displayLogEntries(localData.logEntries);
+                }
             }
         });
 
         setInterval(() => {
-            let lastFrameTime = null;
-            if (selectedNodeName === 'local' && localData.stats) {
-                lastFrameTime = localData.stats.lastFrameTime;
-            } else if (selectedNodeName !== 'local') {
-                const node = networkNodes.find(n => n.name === selectedNodeName);
-                if (node && node.data && node.data.stats) {
-                    lastFrameTime = node.data.stats.lastFrameTime;
+            const lastFrameElement = document.getElementById('lastFrameTime');
+            if (lastFrameElement && lastFrameElement.textContent.includes('/')) {
+                const lastTime = new Date(lastFrameElement.textContent);
+                if (!isNaN(lastTime)) {
+                    updateTimeAgo(lastTime);
                 }
             }
-            if (lastFrameTime) {
-                updateTimeAgo(new Date(lastFrameTime));
-            }
-        }, 60000);
+        }, 10000);
 
         ipcRenderer.on('network-nodes-update', (event, nodes) => {
             networkNodes = nodes;
@@ -318,9 +317,9 @@
             set('dailyTotal', stats.dailyFrames.successful + stats.dailyFrames.failed);
             set('dailySuccess', stats.dailyFrames.successful);
             set('dailyFailed', stats.dailyFrames.failed);
-            set('epochTotal', (stats.epochFrames) ? stats.epochFrames.successful + stats.epochFrames.failed : 'N/A');
-            set('epochSuccess', (stats.epochFrames) ? stats.epochFrames.successful : 'N/A');
-            set('epochFailed', (stats.epochFrames) ? stats.epochFrames.failed : 'N/A');
+            set('epochTotal', (stats.epochFrames) ? stats.epochFrames.successful + stats.epochFrames.failed : '0');
+            set('epochSuccess', (stats.epochFrames) ? stats.epochFrames.successful : '0');
+            set('epochFailed', (stats.epochFrames) ? stats.epochFrames.failed : '0');
             set('lifetimeTotal', stats.lifetimeFrames.successful + stats.lifetimeFrames.failed);
             set('lifetimeSuccess', stats.lifetimeFrames.successful);
             set('lifetimeFailed', stats.lifetimeFrames.failed);
@@ -360,6 +359,7 @@
                 return;
             }
             logEl.innerHTML = entries.map(entry => `<div class="${entry.className}">${entry.text}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
         }
         
         function getLogEntryClass(line) {

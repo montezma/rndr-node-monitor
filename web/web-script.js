@@ -3,19 +3,24 @@ let allNodes = [];
 let lastRenderedLogs = '';
 
 function updateProcessStatusDisplay(status) {
-    const update = (dotId, textId, isActive) => {
-        const dot = document.getElementById(dotId);
-        const text = document.getElementById(textId);
-        dot.className = `status-dot ${isActive ? 'active' : 'inactive'}`;
-        text.textContent = isActive ? 'Running' : 'Stopped';
-    };
-    update('rndrStatus', 'rndrStatusText', status.rndr);
-    update('watchdogStatus', 'watchdogStatusText', status.watchdog);
+    const rndrDot = document.getElementById('rndrStatus');
+    const rndrText = document.getElementById('rndrStatusText');
+    const watchdogDot = document.getElementById('watchdogStatus');
+    const watchdogText = document.getElementById('watchdogStatusText');
+
+    if (!rndrDot || !rndrText || !watchdogDot || !watchdogText) return;
+
+    rndrDot.className = `status-dot ${status.rndr ? 'active' : 'inactive'}`;
+    rndrText.textContent = status.rndr ? 'Running' : 'Stopped';
+    watchdogDot.className = `status-dot ${status.watchdog ? 'active' : 'inactive'}`;
+    watchdogText.textContent = status.watchdog ? 'Running' : 'Stopped';
 }
 
 function updateThermalStatus(gpus) {
     const thermalDot = document.getElementById('thermalStatus');
     const thermalText = document.getElementById('thermalStatusText');
+
+    if (!thermalDot || !thermalText) return;
 
     if (!gpus || gpus.length === 0) {
         thermalDot.className = 'status-dot';
@@ -33,34 +38,48 @@ function updateThermalStatus(gpus) {
 }
 
 function updateStatsDisplay(stats) {
-    const set = (id, val) => { document.getElementById(id).textContent = val; };
+    const set = (id, val) => { 
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+    };
+    
     if (!stats) {
         ['dailyTotal', 'dailySuccess', 'dailyFailed', 'epochTotal', 'epochSuccess', 'epochFailed', 'lifetimeTotal', 'lifetimeSuccess', 'lifetimeFailed'].forEach(id => set(id, 'N/A'));
         set('lastFrameTime', 'Offline');
         set('timeAgo', '');
         return;
     }
-    set('dailyTotal', stats.dailyFrames.successful + stats.dailyFrames.failed);
-    set('dailySuccess', stats.dailyFrames.successful);
-    set('dailyFailed', stats.dailyFrames.failed);
-    set('epochTotal', stats.epochFrames.successful + stats.epochFrames.failed);
-    set('epochSuccess', stats.epochFrames.successful);
-    set('epochFailed', stats.epochFrames.failed);
-    set('lifetimeTotal', stats.lifetimeFrames.successful + stats.lifetimeFrames.failed);
-    set('lifetimeSuccess', stats.lifetimeFrames.successful);
-    set('lifetimeFailed', stats.lifetimeFrames.failed);
+
+    const safeStats = {
+        dailyFrames: { successful: 0, failed: 0 },
+        epochFrames: { successful: 0, failed: 0 },
+        lifetimeFrames: { successful: 0, failed: 0 },
+        ...stats
+    };
+
+    set('dailyTotal', safeStats.dailyFrames.successful + safeStats.dailyFrames.failed);
+    set('dailySuccess', safeStats.dailyFrames.successful);
+    set('dailyFailed', safeStats.dailyFrames.failed);
+    set('epochTotal', safeStats.epochFrames.successful + safeStats.epochFrames.failed);
+    set('epochSuccess', safeStats.epochFrames.successful);
+    set('epochFailed', safeStats.epochFrames.failed);
+    set('lifetimeTotal', safeStats.lifetimeFrames.successful + safeStats.lifetimeFrames.failed);
+    set('lifetimeSuccess', safeStats.lifetimeFrames.successful);
+    set('lifetimeFailed', safeStats.lifetimeFrames.failed);
+
     if (stats.lastFrameTime) {
         const frameTime = new Date(stats.lastFrameTime);
-        document.getElementById('lastFrameTime').textContent = frameTime.toLocaleString();
+        set('lastFrameTime', frameTime.toLocaleString());
         updateTimeAgo(frameTime);
     } else {
-         document.getElementById('lastFrameTime').textContent = 'No frames yet';
-         document.getElementById('timeAgo').textContent = '';
+         set('lastFrameTime', 'No frames yet');
+         set('timeAgo', '');
     }
 }
 
 function displayGPUs(gpus) {
     const gpuGrid = document.getElementById('gpuGrid');
+    if (!gpuGrid) return;
     if (!gpus || gpus.length === 0) {
         gpuGrid.innerHTML = `<div class="gpu-card"><div class="gpu-name">No GPU data available</div></div>`;
         return;
@@ -80,6 +99,7 @@ function displayGPUs(gpus) {
 
 function displayLogEntries(entries) {
     const logEl = document.getElementById('logEntries');
+    if (!logEl) return;
     if (!entries || entries.length === 0) {
         if (lastRenderedLogs !== '') {
             logEl.innerHTML = `<div style="color: var(--text-secondary);">No log entries available.</div>`;
@@ -105,27 +125,41 @@ function updateTimeAgo(lastTime) {
     const diff = new Date() - lastTime;
     const hours = Math.floor(diff / 3600000);
     const minutes = Math.floor((diff % 3600000) / 60000);
-    document.getElementById('timeAgo').textContent = hours > 0 ? `(${hours}h ${minutes}m ago)` : `(${minutes}m ago)`;
+    const timeAgoEl = document.getElementById('timeAgo');
+    if (timeAgoEl) {
+        timeAgoEl.textContent = hours > 0 ? `(${hours}h ${minutes}m ago)` : `(${minutes}m ago)`;
+    }
 }
 
 function updateNextEpoch() {
-    const now = new Date();
     const anchorTime = Date.UTC(2025, 7, 26, 23, 17, 23);
     const epochDuration = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
     const timeSinceAnchor = now - anchorTime;
     const epochsSinceAnchor = Math.floor(timeSinceAnchor / epochDuration);
     const nextEpochTime = new Date(anchorTime + ((epochsSinceAnchor + 1) * epochDuration));
     const diff = nextEpochTime - now;
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    document.getElementById('nextEpoch').textContent = `${days}d ${hours}h`;
+    const nextEpochEl = document.getElementById('nextEpoch');
+    if (nextEpochEl) {
+        nextEpochEl.textContent = `${days}d ${hours}h`;
+    }
 }
 
 function updateNodeList() {
     const nodeList = document.getElementById('nodeList');
-    const localNodeHTML = `<li class="node-item ${selectedNodeName === allNodes[0]?.name ? 'active' : ''}" onclick="selectNode('${allNodes[0]?.name}')"><div class="node-status ${allNodes[0]?.data ? 'status-online' : 'status-offline'}"></div><span>${allNodes[0]?.name} (Local)</span></li>`;
+    if (!nodeList || !allNodes || allNodes.length === 0) {
+        nodeList.innerHTML = '';
+        return;
+    }
+
+    const localNode = allNodes[0];
+    const remoteNodes = allNodes.slice(1);
+
+    const localNodeHTML = `<li class="node-item ${selectedNodeName === localNode.name ? 'active' : ''}" onclick="selectNode('${localNode.name}')"><div class="node-status ${localNode.data ? 'status-online' : 'status-offline'}"></div><span>${localNode.name} (Host)</span></li>`;
     
-    const remoteNodesHTML = allNodes.slice(1).map(node => {
+    const remoteNodesHTML = remoteNodes.map(node => {
         const statusClass = node.data ? 'status-online' : 'status-offline';
         return `<li class="node-item ${selectedNodeName === node.name ? 'active' : ''}" onclick="selectNode('${node.name}')"><div class="node-status ${statusClass}"></div><span>${node.name}</span></li>`;
     }).join('');
@@ -136,12 +170,13 @@ function updateNodeList() {
 function selectNode(nodeName) {
     selectedNodeName = nodeName;
     const node = allNodes.find(n => n.name === nodeName);
-    displayNodeData(node.name, node ? node.data : null);
+    displayNodeData(nodeName, node ? node.data : null);
     updateNodeList();
 }
 
 function displayNodeData(nodeName, data) {
-    document.getElementById('nodeTitle').textContent = nodeName;
+    const titleEl = document.getElementById('nodeTitle');
+    if (titleEl) titleEl.textContent = nodeName;
 
     if (!data) {
         const nodeItem = Array.from(document.querySelectorAll('.node-item')).find(item => item.textContent.includes(nodeName));
@@ -190,5 +225,15 @@ function connect() {
 document.addEventListener('DOMContentLoaded', () => {
     updateNextEpoch();
     setInterval(updateNextEpoch, 60 * 60 * 1000);
+    
+setInterval(() => {
+        const lastFrameElement = document.getElementById('lastFrameTime');
+        if (lastFrameElement && lastFrameElement.textContent.includes('/')) {
+            const lastTime = new Date(lastFrameElement.textContent);
+            if (!isNaN(lastTime)) {
+                updateTimeAgo(lastTime);
+            }
+        }
+    }, 10000);
     connect();
 });
