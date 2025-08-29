@@ -1,5 +1,10 @@
 # RNDR Node Monitor
 
+<img width="2682" height="2013" alt="image" src="https://github.com/user-attachments/assets/6e2cd539-b720-48d9-a313-e8502f5557e2" />
+
+
+
+
 A cross-platform monitoring tool for RNDR network nodes. This application provides real-time statistics, GPU health monitoring, and network-wide visibility for all connected render clients in a self-hosting dashboard.
 
 ## Features
