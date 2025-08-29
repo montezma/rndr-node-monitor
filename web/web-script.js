@@ -38,42 +38,53 @@ function updateThermalStatus(gpus) {
 }
 
 function updateStatsDisplay(stats) {
-    const set = (id, val) => { 
+    const set = (id, val) => {
         const el = document.getElementById(id);
         if (el) el.textContent = val;
     };
-    
     if (!stats) {
         ['dailyTotal', 'dailySuccess', 'dailyFailed', 'epochTotal', 'epochSuccess', 'epochFailed', 'lifetimeTotal', 'lifetimeSuccess', 'lifetimeFailed'].forEach(id => set(id, 'N/A'));
+        ['dailySuccessPercent', 'dailyFailedPercent', 'epochSuccessPercent', 'epochFailedPercent', 'lifetimeSuccessPercent', 'lifetimeFailedPercent'].forEach(id => set(id, ''));
         set('lastFrameTime', 'Offline');
         set('timeAgo', '');
         return;
     }
 
-    const safeStats = {
-        dailyFrames: { successful: 0, failed: 0 },
-        epochFrames: { successful: 0, failed: 0 },
-        lifetimeFrames: { successful: 0, failed: 0 },
-        ...stats
-    };
+    const dailyTotalFrames = stats.dailyFrames.successful + stats.dailyFrames.failed;
+    const dailySuccessPercent = dailyTotalFrames > 0 ? Math.round((stats.dailyFrames.successful / dailyTotalFrames) * 100) : 0;
+    const dailyFailedPercent = dailyTotalFrames > 0 ? Math.round((stats.dailyFrames.failed / dailyTotalFrames) * 100) : 0;
+    set('dailyTotal', dailyTotalFrames);
+    set('dailySuccess', stats.dailyFrames.successful);
+    set('dailyFailed', stats.dailyFrames.failed);
+    set('dailySuccessPercent', `(${dailySuccessPercent}%)`);
+    set('dailyFailedPercent', `(${dailyFailedPercent}%)`);
 
-    set('dailyTotal', safeStats.dailyFrames.successful + safeStats.dailyFrames.failed);
-    set('dailySuccess', safeStats.dailyFrames.successful);
-    set('dailyFailed', safeStats.dailyFrames.failed);
-    set('epochTotal', safeStats.epochFrames.successful + safeStats.epochFrames.failed);
-    set('epochSuccess', safeStats.epochFrames.successful);
-    set('epochFailed', safeStats.epochFrames.failed);
-    set('lifetimeTotal', safeStats.lifetimeFrames.successful + safeStats.lifetimeFrames.failed);
-    set('lifetimeSuccess', safeStats.lifetimeFrames.successful);
-    set('lifetimeFailed', safeStats.lifetimeFrames.failed);
+    const epochFrames = stats.epochFrames || { successful: 0, failed: 0 };
+    const epochTotalFrames = epochFrames.successful + epochFrames.failed;
+    const epochSuccessPercent = epochTotalFrames > 0 ? Math.round((epochFrames.successful / epochTotalFrames) * 100) : 0;
+    const epochFailedPercent = epochTotalFrames > 0 ? Math.round((epochFrames.failed / epochTotalFrames) * 100) : 0;
+    set('epochTotal', epochTotalFrames);
+    set('epochSuccess', epochFrames.successful);
+    set('epochFailed', epochFrames.failed);
+    set('epochSuccessPercent', `(${epochSuccessPercent}%)`);
+    set('epochFailedPercent', `(${epochFailedPercent}%)`);
+
+    const lifetimeTotalFrames = stats.lifetimeFrames.successful + stats.lifetimeFrames.failed;
+    const lifetimeSuccessPercent = lifetimeTotalFrames > 0 ? Math.round((stats.lifetimeFrames.successful / lifetimeTotalFrames) * 100) : 0;
+    const lifetimeFailedPercent = lifetimeTotalFrames > 0 ? Math.round((stats.lifetimeFrames.failed / lifetimeTotalFrames) * 100) : 0;
+    set('lifetimeTotal', lifetimeTotalFrames);
+    set('lifetimeSuccess', stats.lifetimeFrames.successful);
+    set('lifetimeFailed', stats.lifetimeFrames.failed);
+    set('lifetimeSuccessPercent', `(${lifetimeSuccessPercent}%)`);
+    set('lifetimeFailedPercent', `(${lifetimeFailedPercent}%)`);
 
     if (stats.lastFrameTime) {
         const frameTime = new Date(stats.lastFrameTime);
         set('lastFrameTime', frameTime.toLocaleString());
         updateTimeAgo(frameTime);
     } else {
-         set('lastFrameTime', 'No frames yet');
-         set('timeAgo', '');
+        set('lastFrameTime', 'No frames yet');
+        set('timeAgo', '');
     }
 }
 
@@ -157,11 +168,38 @@ function updateNodeList() {
     const localNode = allNodes[0];
     const remoteNodes = allNodes.slice(1);
 
-    const localNodeHTML = `<li class="node-item ${selectedNodeName === localNode.name ? 'active' : ''}" onclick="selectNode('${localNode.name}')"><div class="node-status ${localNode.data ? 'status-online' : 'status-offline'}"></div><span>${localNode.name} (Host)</span></li>`;
-    
+    const localNodeHTML = `
+        <li class="node-item ${selectedNodeName === localNode.name ? 'active' : ''}" onclick="selectNode('${localNode.name}')">
+            <div class="node-indicators">
+                <div class="indicator"><div class="node-status status-online"></div> C</div>
+                <div class="indicator"><div class="node-status ${(localNode.data && localNode.data.rndrStatus) ? 'status-online' : 'status-offline'}"></div> R</div>
+            </div>
+            <div class="node-info">
+                <span class="node-name">${localNode.name} (Host)</span>
+                <div class="node-frames">
+                    <span class="frames-success">${(localNode.data && localNode.data.stats) ? localNode.data.stats.dailyFrames.successful : 0}</span> / 
+                    <span class="frames-failed">${(localNode.data && localNode.data.stats) ? localNode.data.stats.dailyFrames.failed : 0}</span>
+                </div>
+            </div>
+        </li>`;
+
     const remoteNodesHTML = remoteNodes.map(node => {
-        const statusClass = node.data ? 'status-online' : 'status-offline';
-        return `<li class="node-item ${selectedNodeName === node.name ? 'active' : ''}" onclick="selectNode('${node.name}')"><div class="node-status ${statusClass}"></div><span>${node.name}</span></li>`;
+        const connectionStatusClass = node.data ? 'status-online' : 'status-offline';
+        const rndrStatusClass = (node.data && node.data.rndrStatus) ? 'status-online' : 'status-offline';
+        const dailyFrames = (node.data && node.data.stats) ? node.data.stats.dailyFrames : { successful: 0, failed: 0 };
+        return `
+            <li class="node-item ${selectedNodeName === node.name ? 'active' : ''}" onclick="selectNode('${node.name}')">
+                <div class="node-indicators">
+                    <div class="indicator"><div class="node-status ${connectionStatusClass}"></div> C</div>
+                    <div class="indicator"><div class="node-status ${rndrStatusClass}"></div> R</div>
+                </div>
+                <div class="node-info">
+                    <span class="node-name">${node.name}</span>
+                    <div class="node-frames">
+                        <span class="frames-success">${dailyFrames.successful}</span> / <span class="frames-failed">${dailyFrames.failed}</span>
+                    </div>
+                </div>
+            </li>`;
     }).join('');
 
     nodeList.innerHTML = localNodeHTML + remoteNodesHTML;

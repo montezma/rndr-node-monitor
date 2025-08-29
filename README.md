@@ -11,6 +11,17 @@ A cross-platform monitoring tool for RNDR network nodes. This application provid
   * **On-Demand Epoch Reporting:** A built-in report generator scans the entire RNDR log file to identify all past work epochs. Users can select and generate detailed CSV reports showing timestamps and render times for every completed frame within a chosen epoch.
   * **Live Log Viewer:** See the last 25 log entries for any selected node, with live updates as new events occur.
 
+## Support the Project
+
+* **If you find this tool useful, please consider supporting its development. Donations are appreciated but not required. Enjoy.**
+
+*    **BTC: bc1qpyzffgaw8rxyrk7knsgnh3rzvpzftgyw8emcsl**
+
+*    **ETH: 0x4975117825a2987b0Da16b7cd117b1047866B430**
+
+*    **SOL: D9qScoXoonvxK1tH8z3uLVpGgaYthfDVxPiUtPoC8XMg**
+
+
 ## Requirements
 
 * **Operating System:** Windows 10 / 11 (64-bit)
@@ -22,6 +33,10 @@ A cross-platform monitoring tool for RNDR network nodes. This application provid
 1.  Go to the **[Releases](https://www.google.com/search?q=https://github.com/montezma/rndr-node-monitor/releases)** page of this repository.
 2.  Download the latest portable `.exe` file from the "Assets" section.
 3.  Run the application. No installation is required.
+4.  To ensure the mDNS works, you must restart once. This will ensure the privleges approved for the firewall allow http://render.local:34568 to be reached.
+
+    If you have issue be sure to report them here. I am not a full time developer, so there may be things I will not get to. Feel free to add suggestions or fork.
+
 
 ## Development
 
@@ -57,3 +72,8 @@ To run the project from source, you will need Node.js and npm installed.
 ## License
 
 This project is licensed under the MIT License.
+
+
+## Disclaimer
+
+This project is an unofficial, third-party tool developed by the community. It is not affiliated with, endorsed by, or connected to OTOY or the RNDR Network in any way. The data presented by this application is parsed from local log files and system commands and is provided for informational purposes only. The accuracy of the statistics is not guaranteed. Use this software at your own risk. I assume no liability for any issues, damages, or discrepancies that may arise from its use.

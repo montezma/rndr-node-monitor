@@ -1,42 +1,95 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <title>Epoch Report Generator</title>
     <style>
         :root {
-            --bg-primary: #1a1a1a; --bg-secondary: #242424; --text-primary: #ffffff;
-            --text-secondary: #a0a0a0; --accent: #00d4ff; --border: #333333;
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #242424;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0a0;
+            --accent: #00d4ff;
+            --border: #333333;
         }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: var(--bg-primary); color: var(--text-primary); margin: 0;
-            display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; overflow: hidden;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden;
         }
-        .titlebar {
-            height: 32px; background: var(--bg-secondary); display: flex; align-items: center;
-            justify-content: space-between; padding: 0 12px; -webkit-app-region: drag;
-            border-bottom: 1px solid var(--border); flex-shrink: 0;
-        }
-        .titlebar-title { font-size: 13px; font-weight: 500; }
-        .titlebar-controls { display: flex; gap: 12px; -webkit-app-region: no-drag; }
-        .titlebar-btn { width: 14px; height: 14px; border-radius: 50%; cursor: pointer; transition: opacity 0.2s; }
-        .titlebar-btn:hover { opacity: 0.8; }
-        .btn-minimize { background: #ffaa00; } .btn-maximize { background: #00ff88; } .btn-close { background: #ff3366; }
 
-        .main-content { padding: 20px; display: flex; flex-direction: column; flex-grow: 1; height: calc(100% - 32px); }
-        
-        /* ✨ CHANGED: Header now stacks its main items (button row and status area) vertically */
+        .titlebar {
+            height: 32px;
+            background: var(--bg-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 12px;
+            -webkit-app-region: drag;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .titlebar-title {
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .titlebar-controls {
+            display: flex;
+            gap: 12px;
+            -webkit-app-region: no-drag;
+        }
+
+        .titlebar-btn {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .titlebar-btn:hover {
+            opacity: 0.8;
+        }
+
+        .btn-minimize {
+            background: #ffaa00;
+        }
+
+        .btn-maximize {
+            background: #00ff88;
+        }
+
+        .btn-close {
+            background: #ff3366;
+        }
+
+        .main-content {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            height: calc(100% - 32px);
+        }
+
         .header {
             display: flex;
             flex-direction: column;
-            gap: 15px; /* Space between button row and status text */
-            align-items: flex-start; /* Align items to the left */
+            gap: 15px;
+            align-items: flex-start;
             margin-bottom: 20px;
             flex-shrink: 0;
         }
 
-        /* ✨ NEW: A container to keep the buttons in a horizontal row */
         .button-container {
             display: flex;
             gap: 10px;
@@ -52,11 +105,13 @@
             transition: all 0.2s;
             font-size: 13px;
         }
+
         button:hover:not(:disabled) {
             background: var(--accent);
             color: #000;
             border-color: var(--accent);
         }
+
         button:disabled {
             background: var(--bg-tertiary);
             border-color: var(--border);
@@ -72,22 +127,60 @@
             color: var(--text-secondary);
         }
 
-        .progress-bar { width: 100%; height: 4px; background: var(--bg-secondary); border-radius: 2px; overflow: hidden; margin-top: 5px; display: none; }
-        .progress-fill { height: 100%; background: var(--accent); transition: width 0.1s; }
-        .epoch-list-container {
-            flex-grow: 1; overflow-y: auto; border: 1px solid var(--border);
-            background: var(--bg-secondary); border-radius: 6px; padding: 15px;
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: var(--bg-secondary);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 5px;
+            display: none;
         }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.1s;
+        }
+
+        .epoch-list-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            padding: 15px;
+        }
+
         .epoch-item {
-            display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
             font-size: 14px;
         }
-        .epoch-item:last-child { border-bottom: none; }
-        .epoch-item input { margin-right: 12px; width: 16px; height: 16px; }
-        .epoch-item label { flex-grow: 1; }
-        .epoch-item .frame-count { color: var(--text-secondary); font-size: 12px; }
+
+        .epoch-item:last-child {
+            border-bottom: none;
+        }
+
+        .epoch-item input {
+            margin-right: 12px;
+            width: 16px;
+            height: 16px;
+        }
+
+        .epoch-item label {
+            flex-grow: 1;
+        }
+
+        .epoch-item .frame-count {
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
     </style>
 </head>
+
 <body>
     <div class="titlebar">
         <div class="titlebar-title">Epoch Report Generator</div>
@@ -107,7 +200,9 @@
             </div>
             <div class="status-area">
                 <span id="statusText">Click "Get All Epochs" to scan your log file.</span>
-                <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+                <div class="progress-bar" id="progressBar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
             </div>
         </div>
         <div class="epoch-list-container" id="epochList"></div>
@@ -146,9 +241,9 @@
                 ipcRenderer.send('generate-selected-reports', selectedEpochs);
             }
         });
-        
+
         openFolderBtn.addEventListener('click', () => {
-             ipcRenderer.send('open-reports-folder');
+            ipcRenderer.send('open-reports-folder');
         });
 
         ipcRenderer.on('epoch-parsing-progress', (event, progress) => {
@@ -174,11 +269,12 @@
                 epochList.innerHTML = '<span style="color: var(--text-secondary);">No completed frames found in log file.</span>';
             }
         });
-        
+
         ipcRenderer.on('report-generation-complete', (event, count) => {
             statusText.textContent = `Successfully generated ${count} report(s).`;
             generateBtn.disabled = false;
         });
     </script>
 </body>
+
 </html>

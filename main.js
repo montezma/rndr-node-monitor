@@ -10,7 +10,7 @@ const axios = require('axios');
 const dgram = require('dgram');
 const http = require('http');
 const WebSocket = require('ws');
-const { Bonjour } = require('bonjour-service');
+const mdns = require('multicast-dns');
 
 let mainWindow;
 let reportWindow;
@@ -34,6 +34,32 @@ if (!fs.existsSync(REPORTS_PATH)) {
 
 const isLogLineEmpty = (line) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \w+: \[\d+\]\s*$/.test(line);
 
+function getNetworkAdapters() {
+  const interfaces = os.networkInterfaces();
+  const adapters = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      const { address, family, internal } = iface;
+      if (family === 'IPv4' && !internal) {
+        adapters.push({ name: name, address: address });
+      }
+    }
+  }
+  return adapters;
+}
+
+function getPreferredIpAddress() {
+  const state = loadState();
+  const adapters = getNetworkAdapters();
+  if (state.preferredAdapter) {
+    const preferred = adapters.find(a => a.address === state.preferredAdapter);
+    if (preferred) {
+      return preferred.address;
+    }
+  }
+  return adapters.length > 0 ? adapters[0].address : '0.0.0.0';
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -41,7 +67,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      webSecurity: true, 
+      webSecurity: true,
       allowRunningInsecureContent: false,
     },
     frame: false,
@@ -50,17 +76,25 @@ function createWindow() {
   });
 
   mainWindow.loadFile('index.html');
-  
+
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
-  
+
   nativeTheme.themeSource = 'dark';
 
   mainWindow.on('closed', () => {
     mainWindow = null;
     if (logWatcher) logWatcher.close();
-    if (bonjour) bonjour.unpublishAll(() => bonjour.destroy());
+
+    if (bonjour) {
+      if (bonjour._announceInterval) {
+        clearInterval(bonjour._announceInterval);
+      }
+      bonjour.destroy();
+      bonjour = null;
+    }
+
     if (webServer) webServer.close();
   });
 }
@@ -92,65 +126,140 @@ function startApiServer() {
 }
 
 function manageWebServer() {
-    const state = loadState();
-    if (iAmWebServerHost && !webServer && state.isHostingEnabled) {
-        console.log(`This node (${os.hostname()}) is now the web host.`);
-        const webApp = express();
-        webApp.use(express.static(path.join(__dirname, 'web')));
-        webApp.get('/web-script.js', (req, res) => res.sendFile(path.join(__dirname, 'web', 'web-script.js')));
+  const state = loadState();
+  if (iAmWebServerHost && !webServer && state.isHostingEnabled) {
+    console.log(`This node (${os.hostname()}) is now the web host.`);
+    const webApp = express();
+    webApp.use(express.static(path.join(__dirname, 'web')));
+    webApp.get('/web-script.js', (req, res) => res.sendFile(path.join(__dirname, 'web', 'web-script.js')));
 
-        webServer = http.createServer(webApp);
-        wss = new WebSocket.Server({ server: webServer });
-        
-        wss.on('connection', ws => {
-            console.log('Web client connected.');
-            ws.send(JSON.stringify({ type: 'all-nodes-update', payload: getAllNodesAsArray() }));
-        });
+    webServer = http.createServer(webApp);
+    wss = new WebSocket.Server({ server: webServer });
 
-        webServer.listen(WEB_PORT, () => {
-            console.log(`Web server running at http://localhost:${WEB_PORT}`);
-            bonjour = new Bonjour();
-            bonjour.publish({ name: 'RNDR Monitor', type: 'http', port: WEB_PORT, host: 'render.local' });
-        });
-    } else if ((!iAmWebServerHost || !state.isHostingEnabled) && webServer) {
-        console.log(`This node (${os.hostname()}) is no longer the web host.`);
-        if (bonjour) {
-            bonjour.unpublishAll(() => {
-                bonjour.destroy();
-                bonjour = null;
-            });
+    wss.on('connection', ws => {
+      console.log('Web client connected.');
+      ws.send(JSON.stringify({ type: 'all-nodes-update', payload: getAllNodesAsArray() }));
+    });
+
+    const preferredIp = getPreferredIpAddress();
+
+    webServer.listen(WEB_PORT, preferredIp, () => {
+      console.log(`Web server running at http://${preferredIp}:${WEB_PORT}`);
+      console.log(`Setting up IPv4-only mDNS for render.local on ${preferredIp}`);
+
+      bonjour = mdns({
+        multicast: true,
+        interface: preferredIp,
+        port: 5353,
+        ip: '224.0.0.251',
+        v4: true,
+        v6: false,
+        reuseAddr: true,
+        socket: dgram.createSocket({
+          type: 'udp4',
+          reuseAddr: true
+        })
+      });
+
+      bonjour.on('query', (query) => {
+        if (query.questions.some(q => q.name === 'render.local')) {
+          bonjour.respond({
+            answers: [{
+              name: 'render.local',
+              type: 'A',
+              ttl: 120,
+              data: preferredIp
+            }]
+          });
         }
-        if (wss) wss.close();
-        if (webServer) webServer.close();
-        webServer = null;
-        wss = null;
+
+        if (query.questions.some(q => q.name === '_http._tcp.local')) {
+          bonjour.respond({
+            answers: [{
+              name: 'RNDR Monitor._http._tcp.local',
+              type: 'SRV',
+              data: {
+                port: WEB_PORT,
+                weight: 0,
+                priority: 0,
+                target: 'render.local'
+              }
+            }]
+          });
+        }
+      });
+
+      const announce = () => {
+        bonjour.respond({
+          answers: [
+            {
+              name: 'render.local',
+              type: 'A',
+              ttl: 120,
+              data: preferredIp
+            },
+            {
+              name: 'RNDR Monitor._http._tcp.local',
+              type: 'PTR',
+              ttl: 120,
+              data: 'RNDR Monitor._http._tcp.local'
+            }
+          ]
+        });
+      };
+
+      announce();
+      const announceInterval = setInterval(announce, 30000);
+
+      bonjour._announceInterval = announceInterval;
+
+      console.log(`mDNS responder active on ${preferredIp} (IPv4 only)`);
+    });
+  } else if ((!iAmWebServerHost || !state.isHostingEnabled) && webServer) {
+    console.log(`This node (${os.hostname()}) is no longer the web host.`);
+
+    if (bonjour) {
+      if (bonjour._announceInterval) {
+        clearInterval(bonjour._announceInterval);
+      }
+      bonjour.destroy();
+      bonjour = null;
     }
+
+    if (wss) wss.close();
+    if (webServer) {
+      webServer.close(() => {
+        webServer = null;
+      });
+    }
+    wss = null;
+  }
 }
 
 function performHostElection() {
-    const state = loadState();
-    const potentialHosts = getAllNodesAsArray()
-        .filter(node => node.isHostingEnabled)
-        .sort((a, b) => a.name.localeCompare(b.name));
+  const state = loadState();
+  const potentialHosts = getAllNodesAsArray()
+    .filter(node => node.isHostingEnabled)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
-    const electedHost = potentialHosts[0];
-    currentHostName = electedHost ? electedHost.name : null;
-    const previousHostState = iAmWebServerHost;
-    iAmWebServerHost = electedHost ? electedHost.name === os.hostname() : false;
+  const electedHost = potentialHosts[0];
+  currentHostName = electedHost ? electedHost.name : null;
+  const previousHostState = iAmWebServerHost;
+  iAmWebServerHost = electedHost ? electedHost.name === os.hostname() : false;
 
-    if (previousHostState !== iAmWebServerHost || (iAmWebServerHost && !webServer)) {
-        manageWebServer();
-    }
-    
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('hosting-status-update', { currentHostName });
-    }
+  if (previousHostState !== iAmWebServerHost || (iAmWebServerHost && !webServer)) {
+    manageWebServer();
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('hosting-status-update', { currentHostName });
+  }
 }
 
 function startServiceDiscovery() {
   const broadcastSocket = dgram.createSocket('udp4');
   broadcastSocket.bind(() => broadcastSocket.setBroadcast(true));
-  
+
   setInterval(() => {
     const state = loadState();
     const message = JSON.stringify({
@@ -168,60 +277,60 @@ function startServiceDiscovery() {
 
   listenSocket.on('message', (msg, rinfo) => {
     try {
-        const data = JSON.parse(msg.toString());
-        if (data.type === 'rndr-monitor' && data.hostname !== os.hostname()) {
-            discoveredNodes.set(data.hostname, {
-                name: data.hostname,
-                host: rinfo.address,
-                port: data.port,
-                lastSeen: Date.now(),
-                isHostingEnabled: data.isHostingEnabled || false,
-                data: null
-            });
-        }
-    } catch (err) {}
+      const data = JSON.parse(msg.toString());
+      if (data.type === 'rndr-monitor' && data.hostname !== os.hostname()) {
+        discoveredNodes.set(data.hostname, {
+          name: data.hostname,
+          host: rinfo.address,
+          port: data.port,
+          lastSeen: Date.now(),
+          isHostingEnabled: data.isHostingEnabled || false,
+          data: null
+        });
+      }
+    } catch (err) { }
   });
 }
 
 async function updateNetworkNodes() {
-    for (const [host, node] of discoveredNodes.entries()) {
-        if (Date.now() - node.lastSeen > 30000) {
-            discoveredNodes.delete(host);
-            continue;
-        }
-        try {
-            const response = await axios.get(`http://${node.host}:${node.port}/api/status`, { timeout: 3000 });
-            node.data = response.data;
-        } catch (err) {
-            node.data = null; 
-            console.error(`Failed to fetch data from ${host}`);
-        }
+  for (const [host, node] of discoveredNodes.entries()) {
+    if (Date.now() - node.lastSeen > 30000) {
+      discoveredNodes.delete(host);
+      continue;
     }
+    try {
+      const response = await axios.get(`http://${node.host}:${node.port}/api/status`, { timeout: 3000 });
+      node.data = response.data;
+    } catch (err) {
+      node.data = null;
+      console.error(`Failed to fetch data from ${host}`);
+    }
+  }
 
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('network-nodes-update', Array.from(discoveredNodes.values()));
-    }
-    
-    if (iAmWebServerHost && wss) {
-        const allNodes = getAllNodesAsArray();
-        wss.clients.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({ type: 'all-nodes-update', payload: allNodes }));
-            }
-        });
-    }
-    performHostElection();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('network-nodes-update', Array.from(discoveredNodes.values()));
+  }
+
+  if (iAmWebServerHost && wss) {
+    const allNodes = getAllNodesAsArray();
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ type: 'all-nodes-update', payload: allNodes }));
+      }
+    });
+  }
+  performHostElection();
 }
 
 function getAllNodesAsArray() {
-    const state = loadState();
-    const localNode = {
-        name: os.hostname(),
-        isHostingEnabled: state.isHostingEnabled,
-        data: getLocalNodeData()
-    };
-    const remoteNodes = Array.from(discoveredNodes.values());
-    return [localNode, ...remoteNodes];
+  const state = loadState();
+  const localNode = {
+    name: os.hostname(),
+    isHostingEnabled: state.isHostingEnabled,
+    data: getLocalNodeData()
+  };
+  const remoteNodes = Array.from(discoveredNodes.values());
+  return [localNode, ...remoteNodes];
 }
 
 function getLocalNodeData() {
@@ -261,11 +370,11 @@ function checkInitialStatus() {
   }
   mainWindow.webContents.send('loading-status', 'Indexing log file...');
   const state = loadState();
-  
+
   const content = fs.readFileSync(LOG_PATH, 'utf8');
   const lines = content.split('\n').filter(line => line.trim() && !isLogLineEmpty(line));
   mainWindow.webContents.send('initial-log-entries', lines.slice(-25));
-  
+
   if (state.lastPosition === 0) {
     parseFullLog();
   } else {
@@ -274,35 +383,36 @@ function checkInitialStatus() {
 }
 
 function loadState() {
-    const defaults = {
-        isHostingEnabled: true,
-        lastPosition: 0,
-        stats: { 
-            lifetimeFrames: { successful: 0, failed: 0 }, 
-            dailyFrames: { successful: 0, failed: 0 },
-            epochFrames: { successful: 0, failed: 0 },
-            lastFrameTime: null 
-        },
-        gpuInfo: [],
-        rndrStatus: false,
-        watchdogStatus: false
-    };
+  const defaults = {
+    isHostingEnabled: true,
+    lastPosition: 0,
+    preferredAdapter: null,
+    stats: {
+      lifetimeFrames: { successful: 0, failed: 0 },
+      dailyFrames: { successful: 0, failed: 0 },
+      epochFrames: { successful: 0, failed: 0 },
+      lastFrameTime: null
+    },
+    gpuInfo: [],
+    rndrStatus: false,
+    watchdogStatus: false
+  };
 
-    if (!fs.existsSync(STATE_FILE)) {
-        return defaults;
-    }
+  if (!fs.existsSync(STATE_FILE)) {
+    return defaults;
+  }
 
-    try {
-        const savedState = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-        
-        const mergedState = { ...defaults, ...savedState };
-        mergedState.stats = { ...defaults.stats, ...(savedState.stats || {}) };
-        
-        return mergedState;
-    } catch (err) {
-        console.error('Error loading or merging state, returning defaults:', err);
-        return defaults;
-    }
+  try {
+    const savedState = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+
+    const mergedState = { ...defaults, ...savedState };
+    mergedState.stats = { ...defaults.stats, ...(savedState.stats || {}) };
+
+    return mergedState;
+  } catch (err) {
+    console.error('Error loading or merging state, returning defaults:', err);
+    return defaults;
+  }
 }
 
 function saveState(state) {
@@ -353,9 +463,9 @@ function parseLogFromPosition(position) {
       mainWindow.webContents.send('stats-update', state.stats);
       mainWindow.webContents.send('loading-complete');
     }
-  } catch(err) {
-      console.error("Could not parse log from position:", err);
-      if(mainWindow) mainWindow.webContents.send('loading-complete');
+  } catch (err) {
+    console.error("Could not parse log from position:", err);
+    if (mainWindow) mainWindow.webContents.send('loading-complete');
   }
 }
 
@@ -364,14 +474,14 @@ function parseLine(line, state) {
 
   const timestamp = extractTimestamp(line);
   if (!timestamp) return;
-  
+
   const lineTime = new Date(timestamp).getTime();
   const dayAgo = Date.now() - (24 * 60 * 60 * 1000);
   const currentEpochStart = getEpochStart(new Date()).getTime();
 
   if (state.stats.lastFrameTime && new Date(state.stats.lastFrameTime).getTime() < currentEpochStart && lineTime >= currentEpochStart) {
-      console.log("New epoch detected, resetting live epoch stats.");
-      state.stats.epochFrames = { successful: 0, failed: 0 };
+    console.log("New epoch detected, resetting live epoch stats.");
+    state.stats.epochFrames = { successful: 0, failed: 0 };
   }
 
   if (line.includes('job completed successfully')) {
@@ -397,13 +507,13 @@ function extractRenderTime(line) {
 }
 
 function getEpochStart(date) {
-    const anchorTime = Date.UTC(2025, 7, 26, 23, 17, 23); // Aug 26 2025 23:17:23 UTC
-    const epochDuration = 7 * 24 * 60 * 60 * 1000;
-    const targetTime = date.getTime();
-    const timeSinceAnchor = targetTime - anchorTime;
-    const epochsSinceAnchor = Math.floor(timeSinceAnchor / epochDuration);
-    const currentEpochStartTime = anchorTime + (epochsSinceAnchor * epochDuration);
-    return new Date(currentEpochStartTime);
+  const anchorTime = Date.UTC(2025, 7, 26, 23, 17, 23);
+  const epochDuration = 7 * 24 * 60 * 60 * 1000;
+  const targetTime = date.getTime();
+  const timeSinceAnchor = targetTime - anchorTime;
+  const epochsSinceAnchor = Math.floor(timeSinceAnchor / epochDuration);
+  const currentEpochStartTime = anchorTime + (epochsSinceAnchor * epochDuration);
+  return new Date(currentEpochStartTime);
 }
 
 function generateEpochReport(epochId, frames) {
@@ -430,39 +540,39 @@ function generateEpochReport(epochId, frames) {
 }
 
 function startLogMonitoring() {
-    if (!fs.existsSync(LOG_PATH)) return;
-    let lastSize = fs.statSync(LOG_PATH).size;
+  if (!fs.existsSync(LOG_PATH)) return;
+  let lastSize = fs.statSync(LOG_PATH).size;
 
-    logWatcher = chokidar.watch(LOG_PATH, { persistent: true, usePolling: true, interval: 2000 });
-    logWatcher.on('change', () => {
-        try {
-            const state = loadState();
-            const stats = fs.statSync(LOG_PATH);
-            if (stats.size > lastSize) {
-                const stream = fs.createReadStream(LOG_PATH, { start: lastSize, encoding: 'utf8' });
-                stream.on('data', chunk => {
-                    const lines = chunk.split('\n');
-                    lines.forEach(line => {
-                        if (line.trim() && !isLogLineEmpty(line)) {
-                            parseLine(line, state);
-                            if (mainWindow && !mainWindow.isDestroyed()) {
-                                mainWindow.webContents.send('log-line', line);
-                            }
-                        }
-                    });
-                    saveState(state);
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send('stats-update', state.stats);
-                    }
-                });
+  logWatcher = chokidar.watch(LOG_PATH, { persistent: true, usePolling: true, interval: 2000 });
+  logWatcher.on('change', () => {
+    try {
+      const state = loadState();
+      const stats = fs.statSync(LOG_PATH);
+      if (stats.size > lastSize) {
+        const stream = fs.createReadStream(LOG_PATH, { start: lastSize, encoding: 'utf8' });
+        stream.on('data', chunk => {
+          const lines = chunk.split('\n');
+          lines.forEach(line => {
+            if (line.trim() && !isLogLineEmpty(line)) {
+              parseLine(line, state);
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('log-line', line);
+              }
             }
-            lastSize = stats.size;
-            state.lastPosition = lastSize;
-            saveState(state);
-        } catch (err) {
-            console.error('Error in log watcher:', err);
-        }
-    });
+          });
+          saveState(state);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('stats-update', state.stats);
+          }
+        });
+      }
+      lastSize = stats.size;
+      state.lastPosition = lastSize;
+      saveState(state);
+    } catch (err) {
+      console.error('Error in log watcher:', err);
+    }
+  });
 }
 
 function startGPUMonitoring() {
@@ -475,18 +585,18 @@ function startGPUMonitoring() {
       }
       const gpus = stdout.trim().split('\n').filter(l => l).map(line => {
         const parts = line.split(', ');
-        return { 
-            index: parseInt(parts[0]), 
-            name: parts[1].trim(), 
-            temperature: parseInt(parts[2]), 
-            gpuUtilization: parseInt(parts[3]), 
-            memoryUsed: parseInt(parts[4]),
-            memoryTotal: parseInt(parts[5]),
-            pState: parts[6].trim(),
-            isThrottling: parts[7].trim() === 'Active',
-            memoryUsedGB: (parseInt(parts[4]) / 1024).toFixed(2), 
-            memoryTotalGB: (parseInt(parts[5]) / 1024).toFixed(2), 
-            memoryUtilization: Math.round((parseInt(parts[4]) / parseInt(parts[5])) * 100)
+        return {
+          index: parseInt(parts[0]),
+          name: parts[1].trim(),
+          temperature: parseInt(parts[2]),
+          gpuUtilization: parseInt(parts[3]),
+          memoryUsed: parseInt(parts[4]),
+          memoryTotal: parseInt(parts[5]),
+          pState: parts[6].trim(),
+          isThrottling: parts[7].trim() === 'Active',
+          memoryUsedGB: (parseInt(parts[4]) / 1024).toFixed(2),
+          memoryTotalGB: (parseInt(parts[5]) / 1024).toFixed(2),
+          memoryUtilization: Math.round((parseInt(parts[4]) / parseInt(parts[5])) * 100)
         };
       });
       const state = loadState();
@@ -506,22 +616,22 @@ function startProcessMonitoring() {
         console.error('Error checking processes:', err);
         return;
       }
-      
+
       const lines = stdout.trim().split('\n');
       let rndrRunning = false;
       let watchdogRunning = false;
 
       for (const line of lines) {
         const lowerLine = line.toLowerCase();
-        
+
         if (lowerLine.includes('rndr') && (lowerLine.includes('tcp/ip services') || lowerLine.includes('rndr client'))) {
           rndrRunning = true;
         }
-        
+
         if (lowerLine.includes('watchdog')) {
           watchdogRunning = true;
         }
-        
+
         if (rndrRunning && watchdogRunning) {
           break;
         }
@@ -531,7 +641,7 @@ function startProcessMonitoring() {
       state.rndrStatus = rndrRunning;
       state.watchdogStatus = watchdogRunning;
       saveState(state);
-      
+
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('process-status', {
           rndr: rndrRunning,
@@ -540,110 +650,141 @@ function startProcessMonitoring() {
       }
     });
   };
-  
+
   checkProcesses();
   setInterval(checkProcesses, 5000);
 }
 
-ipcMain.on('open-report-generator', () => {
-    if (reportWindow) {
-        reportWindow.focus();
-        return;
+ipcMain.on('get-network-adapters', (event) => {
+  const adapters = getNetworkAdapters();
+  const state = loadState();
+  event.reply('network-adapters-ready', {
+    adapters: adapters,
+    preferred: state.preferredAdapter
+  });
+});
+
+ipcMain.on('set-network-adapter', (event, adapterAddress) => {
+  const state = loadState();
+  state.preferredAdapter = adapterAddress;
+  saveState(state);
+
+  if (iAmWebServerHost) {
+    console.log("Network adapter changed, restarting web server...");
+    if (bonjour) {
+      bonjour.unpublishAll(() => {
+        bonjour.destroy();
+        bonjour = null;
+      });
     }
-    reportWindow = new BrowserWindow({
-        width: 600,
-        height: 700,
-        parent: mainWindow,
-        modal: true,
-        webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false
-        },
-        frame: false,
-        backgroundColor: '#1a1a1a',
-        autoHideMenuBar: true
-    });
-    reportWindow.loadFile('reports.html');
-    reportWindow.on('closed', () => {
-        reportWindow = null;
-    });
+    if (webServer) {
+      webServer.close(() => {
+        webServer = null;
+        manageWebServer();
+      });
+    }
+  }
+});
+
+ipcMain.on('open-report-generator', () => {
+  if (reportWindow) {
+    reportWindow.focus();
+    return;
+  }
+  reportWindow = new BrowserWindow({
+    width: 600,
+    height: 700,
+    parent: mainWindow,
+    modal: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    },
+    frame: false,
+    backgroundColor: '#1a1a1a',
+    autoHideMenuBar: true
+  });
+  reportWindow.loadFile('reports.html');
+  reportWindow.on('closed', () => {
+    reportWindow = null;
+  });
 });
 
 ipcMain.on('get-all-epochs', (event) => {
-    if (!fs.existsSync(LOG_PATH)) {
-        event.reply('epoch-list-ready', []);
-        return;
+  if (!fs.existsSync(LOG_PATH)) {
+    event.reply('epoch-list-ready', []);
+    return;
+  }
+
+  parsedEpochData.clear();
+  const fileStream = fs.createReadStream(LOG_PATH);
+  const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
+  const totalSize = fs.statSync(LOG_PATH).size;
+  let processedSize = 0;
+
+  rl.on('line', (line) => {
+    processedSize += Buffer.byteLength(line, 'utf8') + 1;
+    if (line.includes('job completed successfully')) {
+      const timestamp = extractTimestamp(line);
+      const renderTime = extractRenderTime(line);
+      if (timestamp && renderTime !== null) {
+        const date = new Date(timestamp);
+        const epochStart = getEpochStart(date);
+        const epochId = epochStart.toISOString().split('T')[0];
+
+        if (!parsedEpochData.has(epochId)) {
+          const endDate = new Date(epochStart);
+          endDate.setDate(endDate.getDate() + 7);
+          parsedEpochData.set(epochId, {
+            startDate: epochStart,
+            endDate: endDate,
+            frames: []
+          });
+        }
+        parsedEpochData.get(epochId).frames.push({ timestamp, renderTime });
+      }
     }
+    if (reportWindow && !reportWindow.isDestroyed()) {
+      reportWindow.webContents.send('epoch-parsing-progress', (processedSize / totalSize) * 100);
+    }
+  });
 
-    parsedEpochData.clear();
-    const fileStream = fs.createReadStream(LOG_PATH);
-    const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
-    const totalSize = fs.statSync(LOG_PATH).size;
-    let processedSize = 0;
+  rl.on('close', () => {
+    const epochList = Array.from(parsedEpochData.entries()).map(([id, data]) => {
+      const start = data.startDate;
+      const end = new Date(data.endDate - 1);
+      return {
+        id,
+        label: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`,
+        frameCount: data.frames.length
+      };
+    }).sort((a, b) => new Date(b.id) - new Date(a.id));
 
-    rl.on('line', (line) => {
-        processedSize += Buffer.byteLength(line, 'utf8') + 1;
-        if (line.includes('job completed successfully')) {
-            const timestamp = extractTimestamp(line);
-            const renderTime = extractRenderTime(line);
-            if (timestamp && renderTime !== null) {
-                const date = new Date(timestamp);
-                const epochStart = getEpochStart(date);
-                const epochId = epochStart.toISOString().split('T')[0];
-
-                if (!parsedEpochData.has(epochId)) {
-                    const endDate = new Date(epochStart);
-                    endDate.setDate(endDate.getDate() + 7);
-                    parsedEpochData.set(epochId, {
-                        startDate: epochStart,
-                        endDate: endDate,
-                        frames: []
-                    });
-                }
-                parsedEpochData.get(epochId).frames.push({ timestamp, renderTime });
-            }
-        }
-        if (reportWindow && !reportWindow.isDestroyed()) {
-            reportWindow.webContents.send('epoch-parsing-progress', (processedSize / totalSize) * 100);
-        }
-    });
-
-    rl.on('close', () => {
-        const epochList = Array.from(parsedEpochData.entries()).map(([id, data]) => {
-            const start = data.startDate;
-            const end = new Date(data.endDate - 1);
-            return {
-                id,
-                label: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`,
-                frameCount: data.frames.length
-            };
-        }).sort((a, b) => new Date(b.id) - new Date(a.id));
-        
-        if (reportWindow && !reportWindow.isDestroyed()) {
-            reportWindow.webContents.send('epoch-list-ready', epochList);
-        }
-    });
+    if (reportWindow && !reportWindow.isDestroyed()) {
+      reportWindow.webContents.send('epoch-list-ready', epochList);
+    }
+  });
 });
 
 ipcMain.on('generate-selected-reports', (event, selectedEpochIds) => {
-    let generatedCount = 0;
-    for (const epochId of selectedEpochIds) {
-        if (parsedEpochData.has(epochId)) {
-            const epochData = parsedEpochData.get(epochId);
-            generateEpochReport(epochId, epochData.frames);
-            generatedCount++;
-        }
+  let generatedCount = 0;
+  for (const epochId of selectedEpochIds) {
+    if (parsedEpochData.has(epochId)) {
+      const epochData = parsedEpochData.get(epochId);
+      generateEpochReport(epochId, epochData.frames);
+      generatedCount++;
     }
-    if (reportWindow && !reportWindow.isDestroyed()) {
-        reportWindow.webContents.send('report-generation-complete', generatedCount);
-    }
+  }
+  if (reportWindow && !reportWindow.isDestroyed()) {
+    reportWindow.webContents.send('report-generation-complete', generatedCount);
+  }
 });
 
 ipcMain.on('toggle-hosting', (event, isEnabled) => {
-    const state = loadState();
-    state.isHostingEnabled = isEnabled;
-    saveState(state);
-    event.reply('hosting-enabled-updated', isEnabled);
+  const state = loadState();
+  state.isHostingEnabled = isEnabled;
+  saveState(state);
+  event.reply('hosting-enabled-updated', isEnabled);
 });
 
 ipcMain.on('open-reports-folder', () => {
@@ -658,22 +799,23 @@ ipcMain.on('toggle-theme', (event) => {
 });
 
 ipcMain.on('minimize-window', (event) => {
-    const window = BrowserWindow.fromWebContents(event.sender);
-    if(window) window.minimize();
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (window) window.minimize();
 });
 
 ipcMain.on('maximize-window', (event) => {
-    const window = BrowserWindow.fromWebContents(event.sender);
-    if(window) {
-      if (window.isMaximized()) {
-        window.unmaximize();
-      } else {
-        window.maximize();
-      }
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (window) {
+    if (window.isMaximized()) {
+      window.unmaximize();
+    } else {
+      window.maximize();
     }
+  }
 });
 
 ipcMain.on('close-window', (event) => {
-    const window = BrowserWindow.fromWebContents(event.sender);
-    if(window) window.close();
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (window) window.close();
 });
+
