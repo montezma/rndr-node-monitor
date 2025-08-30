@@ -11,9 +11,10 @@ lerna-debug.log*
 .electron/
 dist/
 release/
+package-lock.json
 
 # User Data
-*.json
+state.json
 reports/
 rndr_log.txt
 
