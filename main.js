@@ -368,18 +368,41 @@ function checkInitialStatus() {
     mainWindow.webContents.send('log-error', 'Log file not found');
     return;
   }
-  mainWindow.webContents.send('loading-status', 'Indexing log file...');
+  mainWindow.webContents.send('loading-status', 'Analyzing render history...');
+
+
   const state = loadState();
 
-  const content = fs.readFileSync(LOG_PATH, 'utf8');
-  const lines = content.split('\n').filter(line => line.trim() && !isLogLineEmpty(line));
-  mainWindow.webContents.send('initial-log-entries', lines.slice(-25));
 
-  if (state.lastPosition === 0) {
-    parseFullLog();
-  } else {
-    parseLogFromPosition(state.lastPosition);
-  }
+  state.stats = {
+    lifetimeFrames: { successful: 0, failed: 0 },
+    dailyFrames: { successful: 0, failed: 0 },
+    epochFrames: { successful: 0, failed: 0 },
+    lastFrameTime: null
+  };
+
+
+  const content = fs.readFileSync(LOG_PATH, 'utf8');
+  const lines = content.split('\n');
+
+
+  lines.forEach(line => {
+    parseLine(line, state);
+  });
+
+
+  state.lastPosition = content.length;
+  saveState(state);
+
+
+  mainWindow.webContents.send('stats-update', state.stats);
+
+
+  const recentLines = lines.filter(line => line.trim() && !isLogLineEmpty(line));
+  mainWindow.webContents.send('initial-log-entries', recentLines.slice(-25));
+
+
+  mainWindow.webContents.send('loading-complete');
 }
 
 function loadState() {
@@ -420,52 +443,6 @@ function saveState(state) {
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   } catch (err) {
     console.error('Error saving state:', err);
-  }
-}
-
-function parseFullLog() {
-  const state = loadState();
-  const content = fs.readFileSync(LOG_PATH, 'utf8');
-  const lines = content.split('\n');
-  lines.forEach((line, index) => {
-    if (index % 100 === 0) {
-      mainWindow.webContents.send('loading-progress', Math.floor((index / lines.length) * 100));
-    }
-    parseLine(line, state);
-  });
-  state.lastPosition = content.length;
-  saveState(state);
-  mainWindow.webContents.send('stats-update', state.stats);
-  mainWindow.webContents.send('loading-complete');
-}
-
-function parseLogFromPosition(position) {
-  try {
-    const stats = fs.statSync(LOG_PATH);
-    const state = loadState();
-    if (stats.size > position) {
-      const stream = fs.createReadStream(LOG_PATH, { start: position, encoding: 'utf8' });
-      let buffer = '';
-      stream.on('data', chunk => {
-        buffer += chunk;
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-        lines.forEach(line => parseLine(line, state));
-      });
-      stream.on('end', () => {
-        if (buffer) parseLine(buffer, state);
-        state.lastPosition = stats.size;
-        saveState(state);
-        mainWindow.webContents.send('stats-update', state.stats);
-        mainWindow.webContents.send('loading-complete');
-      });
-    } else {
-      mainWindow.webContents.send('stats-update', state.stats);
-      mainWindow.webContents.send('loading-complete');
-    }
-  } catch (err) {
-    console.error("Could not parse log from position:", err);
-    if (mainWindow) mainWindow.webContents.send('loading-complete');
   }
 }
 
