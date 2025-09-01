@@ -39,9 +39,12 @@ function getNetworkAdapters() {
   const adapters = [];
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
-      const { address, family, internal } = iface;
-      if (family === 'IPv4' && !internal) {
-        adapters.push({ name: name, address: address });
+      if (iface.family === 'IPv4' && !iface.internal) {
+        adapters.push({
+          name: name,
+          address: iface.address,
+          displayName: name.replace(/[^\w\s]/gi, ' ').trim()
+        });
       }
     }
   }
@@ -349,7 +352,7 @@ function getLocalNodeData() {
     rndrStatus: state.rndrStatus,
     watchdogStatus: state.watchdogStatus,
     gpuInfo: state.gpuInfo,
-    stats: getDisplayableStats(state), // Use helper for correct format
+    stats: getDisplayableStats(state),
     lastUpdate: state.lastUpdate,
     recentLogs: recentLogs
   };
@@ -360,7 +363,7 @@ function initializeMonitoring() {
   startLogMonitoring();
   startGPUMonitoring();
   startProcessMonitoring();
-  startDailyFramePruning(); // Start the new auto-pruning process
+  startDailyFramePruning();
   setInterval(updateNetworkNodes, 5000);
 }
 
@@ -370,32 +373,31 @@ function checkInitialStatus() {
     return;
   }
   mainWindow.webContents.send('loading-status', 'Analyzing render history...');
-  
-  const state = loadState(); 
-  
-  // Reset all frame statistics to ensure a clean calculation on every startup.
+
+  const state = loadState();
+
   state.stats = {
-      lifetimeFrames: { successful: 0, failed: 0 },
-      dailyFrames: { successfulTimestamps: [], failedTimestamps: [] },
-      epochFrames: { successful: 0, failed: 0 },
-      lastFrameTime: null
+    lifetimeFrames: { successful: 0, failed: 0 },
+    dailyFrames: { successfulTimestamps: [], failedTimestamps: [] },
+    epochFrames: { successful: 0, failed: 0 },
+    lastFrameTime: null
   };
-  
+
   const content = fs.readFileSync(LOG_PATH, 'utf8');
   const lines = content.split('\n');
 
   lines.forEach(line => {
     parseLine(line, state);
   });
-  
+
   state.lastPosition = content.length;
   saveState(state);
-  
+
   mainWindow.webContents.send('stats-update', getDisplayableStats(state));
-  
+
   const recentLines = lines.filter(line => line.trim() && !isLogLineEmpty(line));
   mainWindow.webContents.send('initial-log-entries', recentLines.slice(-25));
-  
+
   mainWindow.webContents.send('loading-complete');
 }
 
@@ -406,7 +408,6 @@ function loadState() {
     preferredAdapter: null,
     stats: {
       lifetimeFrames: { successful: 0, failed: 0 },
-      // NEW: Store timestamps instead of a simple count
       dailyFrames: { successfulTimestamps: [], failedTimestamps: [] },
       epochFrames: { successful: 0, failed: 0 },
       lastFrameTime: null
@@ -424,9 +425,8 @@ function loadState() {
     const savedState = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
 
     const mergedState = { ...defaults, ...savedState };
-    // Ensure the stats object and its children are well-defined
     mergedState.stats = { ...defaults.stats, ...(savedState.stats || {}) };
-    mergedState.stats.dailyFrames = { ...defaults.stats.dailyFrames, ...(savedState.stats?.dailyFrames || {})};
+    mergedState.stats.dailyFrames = { ...defaults.stats.dailyFrames, ...(savedState.stats?.dailyFrames || {}) };
 
 
     return mergedState;
@@ -461,53 +461,50 @@ function parseLine(line, state) {
 
   if (line.includes('job completed successfully')) {
     state.stats.lifetimeFrames.successful++;
-    // NEW: Push the timestamp to the array
     if (lineTime > dayAgo) state.stats.dailyFrames.successfulTimestamps.push(lineTime);
     if (lineTime >= currentEpochStart) state.stats.epochFrames.successful++;
     state.stats.lastFrameTime = timestamp;
   } else if (line.includes('job failed')) {
     state.stats.lifetimeFrames.failed++;
-    // NEW: Push the timestamp to the array
     if (lineTime > dayAgo) state.stats.dailyFrames.failedTimestamps.push(lineTime);
     if (lineTime >= currentEpochStart) state.stats.epochFrames.failed++;
   }
 }
 
-// NEW: Helper function to convert timestamp arrays into displayable counts
 function getDisplayableStats(state) {
-    const displayable = JSON.parse(JSON.stringify(state.stats)); // Deep copy to avoid side-effects
-    displayable.dailyFrames = {
-      successful: state.stats.dailyFrames.successfulTimestamps.length,
-      failed: state.stats.dailyFrames.failedTimestamps.length
-    };
-    return displayable;
+  const displayable = JSON.parse(JSON.stringify(state.stats));
+  displayable.dailyFrames = {
+    successful: state.stats.dailyFrames.successfulTimestamps.length,
+    failed: state.stats.dailyFrames.failedTimestamps.length
+  };
+  return displayable;
 }
 
-// NEW: Background process to prune old frames from the 24-hour count
+
 function startDailyFramePruning() {
-    setInterval(() => {
-      const state = loadState();
-      const dayAgo = Date.now() - (24 * 60 * 60 * 1000);
-  
-      const originalSuccessCount = state.stats.dailyFrames.successfulTimestamps.length;
-      const originalFailedCount = state.stats.dailyFrames.failedTimestamps.length;
-  
-      // Filter the arrays, keeping only timestamps from the last 24 hours
-      state.stats.dailyFrames.successfulTimestamps = state.stats.dailyFrames.successfulTimestamps.filter(ts => ts > dayAgo);
-      state.stats.dailyFrames.failedTimestamps = state.stats.dailyFrames.failedTimestamps.filter(ts => ts > dayAgo);
-  
-      const newSuccessCount = state.stats.dailyFrames.successfulTimestamps.length;
-      const newFailedCount = state.stats.dailyFrames.failedTimestamps.length;
-  
-      // Only update and save if a frame was actually removed
-      if (newSuccessCount !== originalSuccessCount || newFailedCount !== originalFailedCount) {
-        saveState(state);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('stats-update', getDisplayableStats(state));
-        }
-        console.log(`Pruned daily frames. Removed ${originalSuccessCount - newSuccessCount} successful, ${originalFailedCount - newFailedCount} failed.`);
+  setInterval(() => {
+    const state = loadState();
+    const dayAgo = Date.now() - (24 * 60 * 60 * 1000);
+
+    const originalSuccessCount = state.stats.dailyFrames.successfulTimestamps.length;
+    const originalFailedCount = state.stats.dailyFrames.failedTimestamps.length;
+
+
+    state.stats.dailyFrames.successfulTimestamps = state.stats.dailyFrames.successfulTimestamps.filter(ts => ts > dayAgo);
+    state.stats.dailyFrames.failedTimestamps = state.stats.dailyFrames.failedTimestamps.filter(ts => ts > dayAgo);
+
+    const newSuccessCount = state.stats.dailyFrames.successfulTimestamps.length;
+    const newFailedCount = state.stats.dailyFrames.failedTimestamps.length;
+
+
+    if (newSuccessCount !== originalSuccessCount || newFailedCount !== originalFailedCount) {
+      saveState(state);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('stats-update', getDisplayableStats(state));
       }
-    }, 30 * 60 * 1000); // Run every 30 minutes
+      console.log(`Pruned daily frames. Removed ${originalSuccessCount - newSuccessCount} successful, ${originalFailedCount - newFailedCount} failed.`);
+    }
+  }, 30 * 60 * 1000);
 }
 
 function extractTimestamp(line) {
@@ -686,10 +683,11 @@ ipcMain.on('set-network-adapter', (event, adapterAddress) => {
   if (iAmWebServerHost) {
     console.log("Network adapter changed, restarting web server...");
     if (bonjour) {
-      bonjour.unpublishAll(() => {
-        bonjour.destroy();
-        bonjour = null;
-      });
+      if (bonjour._announceInterval) {
+        clearInterval(bonjour._announceInterval);
+      }
+      bonjour.destroy();
+      bonjour = null;
     }
     if (webServer) {
       webServer.close(() => {
