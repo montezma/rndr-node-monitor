@@ -1,6 +1,6 @@
 {
   "name": "rndr-node-monitor",
-  "version": "1.9.2",
+  "version": "1.9.3",
   "description": "A monitor for RNDR network nodes.",
   "main": "main.js",
   "scripts": {
@@ -19,6 +19,7 @@
     "chokidar": "^3.5.3",
     "express": "^4.18.2",
     "multicast-dns": "^7.2.5",
+    "qrcode-generator": "^2.0.4",
     "ws": "^8.13.0"
   },
   "build": {
