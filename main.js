@@ -11,6 +11,7 @@ const dgram = require('dgram');
 const http = require('http');
 const WebSocket = require('ws');
 const mdns = require('multicast-dns');
+const psList = require('ps-list');
 
 let mainWindow;
 let reportWindow;
@@ -621,45 +622,48 @@ function startGPUMonitoring() {
 }
 
 function startProcessMonitoring() {
-  const checkProcesses = () => {
-    exec('tasklist /V /FO CSV', (err, stdout) => {
-      if (err) {
-        console.error('Error checking processes:', err);
-        return;
-      }
+  const checkProcesses = async () => {
+    try {
+      const processes = await psList();
+      const isRndrRunning = processes.some(proc => {
+        const name = (proc.name || '').toLowerCase();
+        return name === 'tcpsvcs.exe';
+      });
+      const command = 'powershell -command "Get-Process | Where-Object {$_.MainWindowTitle} | Select-Object MainWindowTitle | ConvertTo-Json"';
 
-      const lines = stdout.trim().split('\n');
-      let rndrRunning = false;
-      let watchdogRunning = false;
-
-      for (const line of lines) {
-        const lowerLine = line.toLowerCase();
-
-        if (lowerLine.includes('rndr') && (lowerLine.includes('tcp/ip services') || lowerLine.includes('rndr client'))) {
-          rndrRunning = true;
+      exec(command, (err, stdout) => {
+        if (err) {
+          console.error('Error executing PowerShell command:', err);
+          return;
         }
 
-        if (lowerLine.includes('watchdog')) {
-          watchdogRunning = true;
+        let isWatchdogRunning = false;
+        try {
+          const windowTitles = JSON.parse(stdout);
+          const titlesToCheck = Array.isArray(windowTitles) ? windowTitles : [windowTitles];
+          isWatchdogRunning = titlesToCheck.some(win => {
+            const title = (win.MainWindowTitle || '').toLowerCase();
+            return title.includes('rndr watchdog');
+          });
+        } catch (parseError) {
+          isWatchdogRunning = false;
         }
+        const state = loadState();
+        state.rndrStatus = isRndrRunning;
+        state.watchdogStatus = isWatchdogRunning;
+        saveState(state);
 
-        if (rndrRunning && watchdogRunning) {
-          break;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('process-status', {
+            rndr: isRndrRunning,
+            watchdog: isWatchdogRunning
+          });
         }
-      }
+      });
 
-      const state = loadState();
-      state.rndrStatus = rndrRunning;
-      state.watchdogStatus = watchdogRunning;
-      saveState(state);
-
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('process-status', {
-          rndr: rndrRunning,
-          watchdog: watchdogRunning
-        });
-      }
-    });
+    } catch (err) {
+      console.error('An error occurred while checking processes:', err);
+    }
   };
 
   checkProcesses();
