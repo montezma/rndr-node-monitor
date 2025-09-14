@@ -21,6 +21,8 @@ let webServer, wss, bonjour;
 let iAmWebServerHost = false;
 let currentHostName = null;
 let parsedEpochData = new Map();
+let jobStartTimes = new Map();
+let jobStartQueue = [];
 
 const USER_DATA_PATH = app.getPath('userData');
 const REPORTS_PATH = path.join(USER_DATA_PATH, 'reports');
@@ -85,6 +87,11 @@ function createWindow() {
     mainWindow.show();
   });
 
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    try { initializeMonitoring(); } catch (e) { console.error('Init error:', e); }
+  });
+
   nativeTheme.themeSource = 'dark';
 
   mainWindow.on('closed', () => {
@@ -103,6 +110,8 @@ function createWindow() {
   });
 }
 
+
+app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('disable-gpu-sandbox');
 app.commandLine.appendSwitch('disable-software-rasterizer');
@@ -112,7 +121,6 @@ app.whenReady().then(() => {
   createWindow();
   startApiServer();
   startServiceDiscovery();
-  initializeMonitoring();
   setInterval(performHostElection, 5000);
 });
 
@@ -125,7 +133,35 @@ app.on('window-all-closed', () => {
 function startApiServer() {
   const apiApp = express();
   apiApp.use(express.json());
+  apiApp.use((req, res, next) => { res.setHeader('Access-Control-Allow-Origin', '*'); next(); });
+
   apiApp.get('/api/status', (req, res) => res.json(getLocalNodeData()));
+
+  apiApp.get('/api/log', async (req, res) => {
+    try {
+      const linesParam = Math.min(parseInt(req.query.lines) || 500, 5000);
+      const hostQuery = req.query.host;
+
+      if (hostQuery && hostQuery !== os.hostname()) {
+        const remote = discoveredNodes.get(hostQuery);
+        if (!remote) return res.status(404).json({ error: 'Unknown host' });
+        try {
+          const resp = await axios.get(`http://${remote.host}:${remote.port}/api/log?lines=${linesParam}`);
+          return res.json(resp.data);
+        } catch (e) {
+          return res.status(502).json({ error: 'Failed to fetch remote log' });
+        }
+      }
+
+      if (!fs.existsSync(LOG_PATH)) return res.json({ host: os.hostname(), lines: [] });
+      const content = fs.readFileSync(LOG_PATH, 'utf8');
+      const lines = content.split('\n').filter(l => l.trim() && !isLogLineEmpty(l));
+      return res.json({ host: os.hostname(), lines: lines.slice(-linesParam) });
+    } catch (err) {
+      res.status(500).json({ error: 'Internal error' });
+    }
+  });
+
   apiApp.listen(API_PORT, '0.0.0.0', () => console.log(`Node API server running on port ${API_PORT}`));
 }
 
@@ -134,6 +170,36 @@ function manageWebServer() {
   if (iAmWebServerHost && !webServer && state.isHostingEnabled) {
     console.log(`This node (${os.hostname()}) is now the web host.`);
     const webApp = express();
+    webApp.use((req, res, next) => { res.setHeader('Access-Control-Allow-Origin', '*'); next(); });
+    webApp.get('/api/log', async (req, res) => {
+      try {
+        const linesParam = Math.min(parseInt(req.query.lines) || 500, 5000);
+        const hostQuery = req.query.host;
+
+        const readLocal = () => {
+          if (!fs.existsSync(LOG_PATH)) return { host: os.hostname(), lines: [] };
+          const content = fs.readFileSync(LOG_PATH, 'utf8');
+          const lines = content.split('\n').filter(l => l.trim() && !isLogLineEmpty(l));
+          return { host: os.hostname(), lines: lines.slice(-linesParam) };
+        };
+
+        if (!hostQuery || hostQuery === os.hostname()) {
+          return res.json(readLocal());
+        }
+
+        const remote = discoveredNodes.get(hostQuery);
+        if (!remote) return res.status(404).json({ error: 'Unknown host' });
+        try {
+          const resp = await axios.get(`http://${remote.host}:${API_PORT}/api/log?lines=${linesParam}`);
+          return res.json(resp.data);
+        } catch (e) {
+          return res.status(502).json({ error: 'Remote fetch failed' });
+        }
+      } catch (err) {
+        res.status(500).json({ error: 'Internal error' });
+      }
+    });
+
     webApp.use(express.static(path.join(__dirname, 'web')));
     webApp.get('/web-script.js', (req, res) => res.sendFile(path.join(__dirname, 'web', 'web-script.js')));
 
@@ -159,35 +225,19 @@ function manageWebServer() {
         v4: true,
         v6: false,
         reuseAddr: true,
-        socket: dgram.createSocket({
-          type: 'udp4',
-          reuseAddr: true
-        })
+        socket: dgram.createSocket({ type: 'udp4', reuseAddr: true })
       });
 
       bonjour.on('query', (query) => {
         if (query.questions.some(q => q.name === 'render.local')) {
-          bonjour.respond({
-            answers: [{
-              name: 'render.local',
-              type: 'A',
-              ttl: 120,
-              data: preferredIp
-            }]
-          });
+          bonjour.respond({ answers: [{ name: 'render.local', type: 'A', ttl: 120, data: preferredIp }] });
         }
-
         if (query.questions.some(q => q.name === '_http._tcp.local')) {
           bonjour.respond({
             answers: [{
               name: 'RNDR Monitor._http._tcp.local',
               type: 'SRV',
-              data: {
-                port: WEB_PORT,
-                weight: 0,
-                priority: 0,
-                target: 'render.local'
-              }
+              data: { port: WEB_PORT, weight: 0, priority: 0, target: 'render.local' }
             }]
           });
         }
@@ -196,25 +246,14 @@ function manageWebServer() {
       const announce = () => {
         bonjour.respond({
           answers: [
-            {
-              name: 'render.local',
-              type: 'A',
-              ttl: 120,
-              data: preferredIp
-            },
-            {
-              name: 'RNDR Monitor._http._tcp.local',
-              type: 'PTR',
-              ttl: 120,
-              data: 'RNDR Monitor._http._tcp.local'
-            }
+            { name: 'render.local', type: 'A', ttl: 120, data: preferredIp },
+            { name: 'RNDR Monitor._http._tcp.local', type: 'PTR', ttl: 120, data: 'RNDR Monitor._http._tcp.local' }
           ]
         });
       };
 
       announce();
       const announceInterval = setInterval(announce, 30000);
-
       bonjour._announceInterval = announceInterval;
 
       console.log(`mDNS responder active on ${preferredIp} (IPv4 only)`);
@@ -223,18 +262,14 @@ function manageWebServer() {
     console.log(`This node (${os.hostname()}) is no longer the web host.`);
 
     if (bonjour) {
-      if (bonjour._announceInterval) {
-        clearInterval(bonjour._announceInterval);
-      }
+      if (bonjour._announceInterval) clearInterval(bonjour._announceInterval);
       bonjour.destroy();
       bonjour = null;
     }
 
     if (wss) wss.close();
     if (webServer) {
-      webServer.close(() => {
-        webServer = null;
-      });
+      webServer.close(() => { webServer = null; });
     }
     wss = null;
   }
@@ -352,7 +387,7 @@ function getLocalNodeData() {
     hostname: os.hostname(),
     rndrStatus: state.rndrStatus,
     watchdogStatus: state.watchdogStatus,
-    gpuInfo: state.gpuInfo,
+    gpus: state.gpuInfo,
     stats: getDisplayableStats(state),
     lastUpdate: state.lastUpdate,
     recentLogs: recentLogs
@@ -369,37 +404,45 @@ function initializeMonitoring() {
 }
 
 function checkInitialStatus() {
-  if (!fs.existsSync(LOG_PATH)) {
-    mainWindow.webContents.send('log-error', 'Log file not found');
-    return;
+  try {
+    if (!fs.existsSync(LOG_PATH)) {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('log-error', 'Log file not found');
+      return;
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('loading-status', 'Analyzing render history...');
+
+    const state = loadState();
+
+    state.stats = {
+      lifetimeFrames: { successful: 0, failed: 0, successfulTime: 0, failedTime: 0 },
+      dailyFrames: { successfulTimestamps: [], failedTimestamps: [] },
+      epochFrames: { successful: 0, failed: 0, successfulTimestamps: [], failedTimestamps: [] },
+      lastFrameTime: null
+    };
+
+    jobStartTimes.clear();
+    jobStartQueue.length = 0;
+
+    const content = fs.readFileSync(LOG_PATH, 'utf8');
+    const lines = content.split('\n');
+
+    lines.forEach(line => {
+      parseLine(line, state);
+    });
+
+    state.lastPosition = content.length;
+    saveState(state);
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('stats-update', getDisplayableStats(state));
+      const recentLines = lines.filter(line => line.trim() && !isLogLineEmpty(line));
+      mainWindow.webContents.send('initial-log-entries', recentLines.slice(-25));
+      mainWindow.webContents.send('loading-complete');
+    }
+  } catch (err) {
+    console.error('Initialization failed:', err);
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('loading-complete');
   }
-  mainWindow.webContents.send('loading-status', 'Analyzing render history...');
-
-  const state = loadState();
-
-  state.stats = {
-    lifetimeFrames: { successful: 0, failed: 0 },
-    dailyFrames: { successfulTimestamps: [], failedTimestamps: [] },
-    epochFrames: { successful: 0, failed: 0 },
-    lastFrameTime: null
-  };
-
-  const content = fs.readFileSync(LOG_PATH, 'utf8');
-  const lines = content.split('\n');
-
-  lines.forEach(line => {
-    parseLine(line, state);
-  });
-
-  state.lastPosition = content.length;
-  saveState(state);
-
-  mainWindow.webContents.send('stats-update', getDisplayableStats(state));
-
-  const recentLines = lines.filter(line => line.trim() && !isLogLineEmpty(line));
-  mainWindow.webContents.send('initial-log-entries', recentLines.slice(-25));
-
-  mainWindow.webContents.send('loading-complete');
 }
 
 function loadState() {
@@ -410,7 +453,7 @@ function loadState() {
     stats: {
       lifetimeFrames: { successful: 0, failed: 0 },
       dailyFrames: { successfulTimestamps: [], failedTimestamps: [] },
-      epochFrames: { successful: 0, failed: 0 },
+      epochFrames: { successful: 0, failed: 0, successfulTimestamps: [], failedTimestamps: [] },
       lastFrameTime: null
     },
     gpuInfo: [],
@@ -428,7 +471,7 @@ function loadState() {
     const mergedState = { ...defaults, ...savedState };
     mergedState.stats = { ...defaults.stats, ...(savedState.stats || {}) };
     mergedState.stats.dailyFrames = { ...defaults.stats.dailyFrames, ...(savedState.stats?.dailyFrames || {}) };
-
+    mergedState.stats.epochFrames = { ...defaults.stats.epochFrames, ...(savedState.stats?.epochFrames || {}) };
 
     return mergedState;
   } catch (err) {
@@ -445,58 +488,164 @@ function saveState(state) {
   }
 }
 
+function extractTimestamp(line) {
+  const match = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+  return match ? match[1] : null;
+}
+
+function parseLocalDateTimeMs(ts) {
+  if (!ts) return Date.now();
+  return new Date(ts).getTime();
+}
+
+function consumeStartByHash(targetHash) {
+  if (!targetHash) return null;
+  const idx = jobStartQueue.findIndex(e => e.hash === targetHash);
+  if (idx === -1) return null;
+  const entry = jobStartQueue.splice(idx, 1)[0];
+  return entry;
+}
+
+function consumeOldestStart() {
+  if (!jobStartQueue.length) return null;
+  return jobStartQueue.shift();
+}
+
 function parseLine(line, state) {
   if (isLogLineEmpty(line)) return;
-
   const timestamp = extractTimestamp(line);
   if (!timestamp) return;
-
-  const lineTime = new Date(timestamp).getTime();
+  const lineTime = parseLocalDateTimeMs(timestamp);
+  const utcMs = lineTime;
+  const isoUtc = new Date(utcMs).toISOString();
   const dayAgo = Date.now() - (24 * 60 * 60 * 1000);
   const currentEpochStart = getEpochStart(new Date()).getTime();
 
+  if (!state.stats.epochFrames.successfulTimestamps) state.stats.epochFrames.successfulTimestamps = [];
+  if (!state.stats.epochFrames.failedTimestamps) state.stats.epochFrames.failedTimestamps = [];
+  if (!state.stats.lifetimeFrames.successfulTime) state.stats.lifetimeFrames.successfulTime = 0;
+  if (!state.stats.lifetimeFrames.failedTime) state.stats.lifetimeFrames.failedTime = 0;
+
   if (state.stats.lastFrameTime && new Date(state.stats.lastFrameTime).getTime() < currentEpochStart && lineTime >= currentEpochStart) {
     console.log("New epoch detected, resetting live epoch stats.");
-    state.stats.epochFrames = { successful: 0, failed: 0 };
+    state.stats.epochFrames = { successful: 0, failed: 0, successfulTimestamps: [], failedTimestamps: [] };
   }
 
+  if (line.includes('starting a new render job with config hash:')) {
+    const m = line.match(/config hash: (\w+)/);
+    const hash = m && m[1] ? m[1] : `unknown_${lineTime}`;
+    jobStartQueue.push({ hash, ts: lineTime });
+    if (jobStartQueue.length > 5000) jobStartQueue.shift();
+    return;
+  }
+
+  const extractHash = () => {
+    const mh = line.match(/hash (\w+)/) || line.match(/config hash: (\w+)/);
+    return mh && mh[1] ? mh[1] : null;
+  };
+
   if (line.includes('job completed successfully')) {
+    const explicitRt = extractRenderTime(line);
+    let hash = extractHash();
+    let start = null;
+    if (hash) start = consumeStartByHash(hash);
+    if (!start) start = consumeOldestStart();
+    if (!hash && start) hash = start.hash;
+
+    const rt = explicitRt != null ? explicitRt : (start ? Math.max(0, (lineTime - start.ts) / 1000) : 0);
+    const point = { ts: lineTime, time: rt, timestamp: lineTime, timestampUtc: utcMs, isoUtc, renderTime: rt, hash };
+
     state.stats.lifetimeFrames.successful++;
-    if (lineTime > dayAgo) state.stats.dailyFrames.successfulTimestamps.push(lineTime);
-    if (lineTime >= currentEpochStart) state.stats.epochFrames.successful++;
+    state.stats.lifetimeFrames.successfulTime = (state.stats.lifetimeFrames.successfulTime || 0) + rt;
+    if (lineTime > dayAgo) state.stats.dailyFrames.successfulTimestamps.push(point);
+    if (lineTime >= currentEpochStart) {
+      state.stats.epochFrames.successful++;
+      state.stats.epochFrames.successfulTimestamps.push(point);
+    }
     state.stats.lastFrameTime = timestamp;
-  } else if (line.includes('job failed')) {
+    return;
+  }
+
+  if (line.includes('job failed')) {
+    const explicitRt = extractRenderTime(line);
+    const hash = extractHash();
+    const start = consumeStartByHash(hash) || consumeOldestStart();
+    const rt = explicitRt != null ? explicitRt : (start ? Math.max(0, (lineTime - (start.ts || lineTime)) / 1000) : 0);
+
+    const point = { ts: lineTime, time: rt, timestamp: lineTime, timestampUtc: utcMs, isoUtc, renderTime: rt, hash };
     state.stats.lifetimeFrames.failed++;
-    if (lineTime > dayAgo) state.stats.dailyFrames.failedTimestamps.push(lineTime);
-    if (lineTime >= currentEpochStart) state.stats.epochFrames.failed++;
+    state.stats.lifetimeFrames.failedTime = (state.stats.lifetimeFrames.failedTime || 0) + rt;
+    if (lineTime > dayAgo) state.stats.dailyFrames.failedTimestamps.push(point);
+    if (lineTime >= currentEpochStart) {
+      state.stats.epochFrames.failed++;
+      state.stats.epochFrames.failedTimestamps.push(point);
+    }
+    return;
   }
 }
 
 function getDisplayableStats(state) {
+  const norm = (arr) => (arr || []).map(item => (
+    typeof item === 'number'
+      ? { ts: item, time: 0, timestamp: item, timestampUtc: item, isoUtc: new Date(item).toISOString(), renderTime: 0, hash: null }
+      : {
+        ts: item.ts,
+        time: item.time ?? item.renderTime ?? 0,
+        timestamp: item.timestamp ?? item.ts,
+        timestampUtc: item.timestampUtc ?? (item.timestamp ?? item.ts),
+        isoUtc: item.isoUtc ?? new Date(item.timestampUtc ?? (item.timestamp ?? item.ts)).toISOString(),
+        renderTime: item.renderTime ?? item.time ?? 0,
+        hash: item.hash ?? null
+      }
+  )).filter(Boolean);
+
+  const successArr = norm(state.stats.dailyFrames.successfulTimestamps);
+  const failArr = norm(state.stats.dailyFrames.failedTimestamps);
+
+  const epochSuccessArr = norm(state.stats.epochFrames?.successfulTimestamps || []);
+  const epochFailArr = norm(state.stats.epochFrames?.failedTimestamps || []);
+
   const displayable = JSON.parse(JSON.stringify(state.stats));
   displayable.dailyFrames = {
-    successful: state.stats.dailyFrames.successfulTimestamps.length,
-    failed: state.stats.dailyFrames.failedTimestamps.length
+    successful: successArr.length,
+    failed: failArr.length,
+    successfulTime: successArr.reduce((a, o) => a + (o.renderTime || 0), 0),
+    failedTime: failArr.reduce((a, o) => a + (o.renderTime || 0), 0),
+    successfulTimestamps: successArr,
+    failedTimestamps: failArr
   };
+
+  displayable.epochFrames = displayable.epochFrames || { successful: 0, failed: 0 };
+  displayable.epochFrames.successful = epochSuccessArr.length;
+  displayable.epochFrames.failed = epochFailArr.length;
+  displayable.epochFrames.successfulTime = epochSuccessArr.reduce((a, o) => a + (o.renderTime || 0), 0);
+  displayable.epochFrames.failedTime = epochFailArr.reduce((a, o) => a + (o.renderTime || 0), 0);
+  displayable.epochFrames.successfulTimestamps = epochSuccessArr;
+  displayable.epochFrames.failedTimestamps = epochFailArr;
+
   return displayable;
 }
-
 
 function startDailyFramePruning() {
   setInterval(() => {
     const state = loadState();
     const dayAgo = Date.now() - (24 * 60 * 60 * 1000);
+    const normalizeInState = (key) => {
+      state.stats.dailyFrames[key] = (state.stats.dailyFrames[key] || []).map(item => (
+        typeof item === 'number' ? { ts: item, time: 0, timestamp: item, renderTime: 0, hash: null } : item
+      ));
+    };
+    normalizeInState('successfulTimestamps');
+    normalizeInState('failedTimestamps');
 
     const originalSuccessCount = state.stats.dailyFrames.successfulTimestamps.length;
     const originalFailedCount = state.stats.dailyFrames.failedTimestamps.length;
 
-
-    state.stats.dailyFrames.successfulTimestamps = state.stats.dailyFrames.successfulTimestamps.filter(ts => ts > dayAgo);
-    state.stats.dailyFrames.failedTimestamps = state.stats.dailyFrames.failedTimestamps.filter(ts => ts > dayAgo);
+    state.stats.dailyFrames.successfulTimestamps = state.stats.dailyFrames.successfulTimestamps.filter(item => item.ts > dayAgo);
+    state.stats.dailyFrames.failedTimestamps = state.stats.dailyFrames.failedTimestamps.filter(item => item.ts > dayAgo);
 
     const newSuccessCount = state.stats.dailyFrames.successfulTimestamps.length;
     const newFailedCount = state.stats.dailyFrames.failedTimestamps.length;
-
 
     if (newSuccessCount !== originalSuccessCount || newFailedCount !== originalFailedCount) {
       saveState(state);
@@ -506,11 +655,6 @@ function startDailyFramePruning() {
       console.log(`Pruned daily frames. Removed ${originalSuccessCount - newSuccessCount} successful, ${originalFailedCount - newFailedCount} failed.`);
     }
   }, 30 * 60 * 1000);
-}
-
-function extractTimestamp(line) {
-  const match = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
-  return match ? match[1] : null;
 }
 
 function extractRenderTime(line) {
@@ -592,6 +736,9 @@ function startGPUMonitoring() {
     const query = 'index,name,temperature.gpu,utilization.gpu,memory.used,memory.total,pstate,clocks_event_reasons.hw_thermal_slowdown';
     exec(`nvidia-smi --query-gpu=${query} --format=csv,noheader,nounits`, (err, stdout) => {
       if (err) {
+        const state = loadState();
+        state.gpuInfo = [];
+        saveState(state);
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('gpu-update', []);
         return;
       }
@@ -669,6 +816,25 @@ function startProcessMonitoring() {
   checkProcesses();
   setInterval(checkProcesses, 5000);
 }
+
+ipcMain.handle('get-remote-log', async (event, { host, lines }) => {
+  if (host === os.hostname()) {
+    if (!fs.existsSync(LOG_PATH)) return { host: os.hostname(), lines: [] };
+    const content = fs.readFileSync(LOG_PATH, 'utf8');
+    const logLines = content.split('\n').filter(l => l.trim() && !isLogLineEmpty(l));
+    return { host: os.hostname(), lines: logLines.slice(-lines) };
+  }
+
+  const remote = discoveredNodes.get(host);
+  if (!remote) throw new Error('Unknown host');
+
+  try {
+    const resp = await axios.get(`http://${remote.host}:${remote.port}/api/log?lines=${lines}`);
+    return resp.data;
+  } catch (e) {
+    throw new Error('Failed to fetch remote log');
+  }
+});
 
 ipcMain.on('get-network-adapters', (event) => {
   const adapters = getNetworkAdapters();

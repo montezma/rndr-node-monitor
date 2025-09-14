@@ -183,6 +183,12 @@
             color: #000;
         }
 
+        .node-item.active .node-name,
+        .node-item.active .node-frames,
+        .node-item.active .indicator {
+            color: #000;
+        }
+
         .node-status {
             width: 8px;
             height: 8px;
@@ -203,6 +209,53 @@
             flex: 1;
             padding: 30px;
             overflow-y: auto;
+        }
+
+        #allNodesView {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+        }
+
+        .node-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .node-card-header {
+            font-size: 16px;
+            font-weight: 500;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+        }
+
+        .node-card-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .node-card-item {
+            font-size: 13px;
+        }
+
+        .node-card-item .label {
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .node-card-gpus {
+            grid-column: 1 / -1;
+            font-size: 12px;
+            color: var(--text-secondary);
+            word-break: break-word;
         }
 
         .loading-overlay {
@@ -412,6 +465,12 @@
             font-size: 11px;
             color: var(--text-secondary);
             text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        .stat-item-sub-label {
+            font-size: 11px;
+            color: var(--text-secondary);
             margin-top: 4px;
         }
 
@@ -667,7 +726,227 @@
             color: var(--text-secondary);
             margin-bottom: 10px;
         }
+
+        .collapsible-section {
+            margin-bottom: 30px;
+        }
+
+        .collapsible-header {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 15px 20px;
+            width: 100%;
+            text-align: left;
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.2s;
+        }
+
+        .collapsible-header:hover {
+            border-color: var(--accent);
+        }
+
+        .collapsible-header h4 {
+            margin: 0;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            letter-spacing: 0.5px;
+        }
+
+        .collapse-icon {
+            font-size: 20px;
+            font-weight: bold;
+            transition: transform 0.3s;
+        }
+
+        .collapsible-content {
+            padding: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            max-height: 500px;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s ease-out, border-width 0.1s ease-out;
+        }
+
+        .collapsible-content.collapsed {
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            border-bottom-width: 0;
+            border-left-width: 0;
+            border-right-width: 0;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        .reset-zoom-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .reset-zoom-btn:hover {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+        }
+
+        .logview-btn {
+            padding: 8px 16px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+
+        .logview-btn:hover {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .55);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .modal {
+            width: 90%;
+            max-width: 900px;
+            max-height: 80vh;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .modal-body {
+            flex: 1;
+            overflow: auto;
+            padding: 0 18px 18px;
+            font-family: "Courier New", monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .modal-footer {
+            padding: 10px 18px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 18px;
+            cursor: pointer;
+            margin-left: auto;
+        }
+
+        .close-btn:hover {
+            color: var(--accent);
+        }
+
+        .log-lines {
+            white-space: pre-wrap;
+        }
+
+        .log-line.success {
+            color: var(--success);
+        }
+
+        .log-line.error {
+            color: var(--error);
+        }
+
+        .log-line.warning {
+            color: var(--warning);
+        }
+
+        .pill {
+            background: var(--bg-tertiary);
+            padding: 4px 8px;
+            border-radius: 20px;
+            font-size: 11px;
+        }
+
+        .select-small,
+        .input-small {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 4px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .refresh-btn {
+            padding: 4px 10px;
+            background: var(--accent);
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .refresh-btn:hover {
+            filter: brightness(1.1);
+        }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@1.2.1"></script>
 </head>
 
 <body>
@@ -685,112 +964,136 @@
             <ul class="node-list" id="nodeList"></ul>
         </div>
         <div class="content">
-            <div class="dashboard-header">
-                <h1 class="dashboard-title" id="nodeTitle"></h1>
-                <div class="header-controls">
-                    <div class="host-status" id="hostStatus"></div>
-                    <select id="networkAdapterSelect"></select>
-                    <label for="hostingToggle"
-                        style="font-size: 13px; color: var(--text-secondary); margin-right: 8px;">Enable
-                        Hosting:</label>
-                    <label class="switch">
-                        <input type="checkbox" id="hostingToggle" onchange="toggleHosting(this.checked)">
-                        <span class="slider"></span>
-                    </label>
-                    <button class="header-btn" id="generateReportsBtn" onclick="openReportGenerator()">Generate
-                        Reports</button>
-                    <button class="header-btn" onclick="toggleTheme()">Toggle Theme</button>
-                    <button class="header-btn" id="openLogBtn" onclick="openLogFile()">Open Log File</button>
-                </div>
-            </div>
-            <div class="status-grid">
-                <div class="status-card">
-                    <h4>Thermal Status</h4>
-                    <div class="status-indicator">
-                        <div class="status-dot" id="thermalStatus"></div>
-                        <span id="thermalStatusText">Nominal</span>
+            <div id="allNodesView" style="display: none;"></div>
+            <div id="singleNodeView">
+                <div class="dashboard-header">
+                    <h1 class="dashboard-title" id="nodeTitle"></h1>
+                    <div class="header-controls">
+                        <div class="host-status" id="hostStatus"></div>
+                        <select id="networkAdapterSelect"></select>
+                        <label for="hostingToggle"
+                            style="font-size: 13px; color: var(--text-secondary); margin-right: 8px;">Enable
+                            Hosting:</label>
+                        <label class="switch">
+                            <input type="checkbox" id="hostingToggle" onchange="toggleHosting(this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                        <button class="header-btn" id="generateReportsBtn" onclick="openReportGenerator()">Generate
+                            Reports</button>
+                        <button class="logview-btn" onclick="openLogViewer()">Log Viewer</button>
+                        <button class="header-btn" onclick="toggleTheme()">Toggle Theme</button>
+                        <button class="header-btn" id="openLogBtn" onclick="openLogFile()">Open Log File</button>
                     </div>
                 </div>
-                <div class="status-card">
-                    <h4>RNDR Client</h4>
-                    <div class="status-indicator">
-                        <div class="status-dot" id="rndrStatus"></div><span id="rndrStatusText">Checking...</span>
-                    </div>
-                </div>
-                <div class="status-card">
-                    <h4>RNDR Watchdog</h4>
-                    <div class="status-indicator">
-                        <div class="status-dot" id="watchdogStatus"></div><span
-                            id="watchdogStatusText">Checking...</span>
-                    </div>
-                </div>
-                <div class="status-card">
-                    <h4>Last Frame</h4>
-                    <div class="last-frame"><span id="lastFrameTime">No frames yet</span><span class="time-ago"
-                            id="timeAgo"></span></div>
-                </div>
-            </div>
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <h4>24 Hour Frames</h4>
-                    <div class="stat-value" id="dailyTotal">0</div>
-                    <div class="stat-breakdown">
-                        <div class="stat-item">
-                            <div class="stat-item-value"><span id="dailySuccess">0</span><span class="percentage"
-                                    id="dailySuccessPercent" style="color: var(--success)">(0%)</span></div>
-                            <div class="stat-item-label">Successful</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-item-value"><span id="dailyFailed">0</span><span class="percentage"
-                                    id="dailyFailedPercent" style="color: var(--error)">(0%)</span></div>
-                            <div class="stat-item-label">Failed</div>
+                <div class="status-grid">
+                    <div class="status-card">
+                        <h4>Thermal Status</h4>
+                        <div class="status-indicator">
+                            <div class="status-dot" id="thermalStatus"></div>
+                            <span id="thermalStatusText">Nominal</span>
                         </div>
                     </div>
-                </div>
-                <div class="stat-card">
-                    <h4>Epoch Frames</h4>
-                    <div class="stat-value" id="epochTotal">0</div>
-                    <div class="stat-breakdown">
-                        <div class="stat-item">
-                            <div class="stat-item-value"><span id="epochSuccess">0</span><span class="percentage"
-                                    id="epochSuccessPercent" style="color: var(--success)">(0%)</span></div>
-                            <div class="stat-item-label">Successful</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-item-value"><span id="epochFailed">0</span><span class="percentage"
-                                    id="epochFailedPercent" style="color: var(--error)">(0%)</span></div>
-                            <div class="stat-item-label">Failed</div>
+                    <div class="status-card">
+                        <h4>RNDR Client</h4>
+                        <div class="status-indicator">
+                            <div class="status-dot" id="rndrStatus"></div><span id="rndrStatusText">Checking...</span>
                         </div>
                     </div>
-                    <div class="stat-label" style="margin-top: 10px">Next epoch: <span
-                            id="nextEpoch">Calculating...</span></div>
-                </div>
-                <div class="stat-card">
-                    <h4>Lifetime Frames</h4>
-                    <div class="stat-value" id="lifetimeTotal">0</div>
-                    <div class="stat-breakdown">
-                        <div class="stat-item">
-                            <div class="stat-item-value"><span id="lifetimeSuccess">0</span><span class="percentage"
-                                    id="lifetimeSuccessPercent" style="color: var(--success)">(0%)</span></div>
-                            <div class="stat-item-label">Successful</div>
+                    <div class="status-card">
+                        <h4>RNDR Watchdog</h4>
+                        <div class="status-indicator">
+                            <div class="status-dot" id="watchdogStatus"></div><span
+                                id="watchdogStatusText">Checking...</span>
                         </div>
-                        <div class="stat-item">
-                            <div class="stat-item-value"><span id="lifetimeFailed">0</span><span class="percentage"
-                                    id="lifetimeFailedPercent" style="color: var(--error)">(0%)</span></div>
-                            <div class="stat-item-label">Failed</div>
+                    </div>
+                    <div class="status-card">
+                        <h4>Last Frame</h4>
+                        <div class="last-frame"><span id="lastFrameTime">No frames yet</span><span class="time-ago"
+                                id="timeAgo"></span></div>
+                    </div>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h4>24 Hour Frames</h4>
+                        <div class="stat-value" id="dailyTotal">0</div>
+                        <div class="stat-breakdown">
+                            <div class="stat-item">
+                                <div class="stat-item-value"><span id="dailySuccess">0</span><span class="percentage"
+                                        id="dailySuccessPercent" style="color: var(--success)">(0%)</span></div>
+                                <div class="stat-item-label">Successful</div>
+                                <div class="stat-item-sub-label" id="dailySuccessTime"></div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-item-value"><span id="dailyFailed">0</span><span class="percentage"
+                                        id="dailyFailedPercent" style="color: var(--error)">(0%)</span></div>
+                                <div class="stat-item-label">Failed</div>
+                                <div class="stat-item-sub-label" id="dailyFailedTime"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Epoch Frames</h4>
+                        <div class="stat-value" id="epochTotal">0</div>
+                        <div class="stat-breakdown">
+                            <div class="stat-item">
+                                <div class="stat-item-value"><span id="epochSuccess">0</span><span class="percentage"
+                                        id="epochSuccessPercent" style="color: var(--success)">(0%)</span></div>
+                                <div class="stat-item-label">Successful</div>
+                                <div class="stat-item-sub-label" id="epochSuccessTime"></div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-item-value"><span id="epochFailed">0</span><span class="percentage"
+                                        id="epochFailedPercent" style="color: var(--error)">(0%)</span></div>
+                                <div class="stat-item-label">Failed</div>
+                                <div class="stat-item-sub-label" id="epochFailedTime"></div>
+                            </div>
+                        </div>
+                        <div class="stat-label" style="margin-top: 10px">Next epoch: <span
+                                id="nextEpoch">Calculating...</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Lifetime Frames</h4>
+                        <div class="stat-value" id="lifetimeTotal">0</div>
+                        <div class="stat-breakdown">
+                            <div class="stat-item">
+                                <div class="stat-item-value"><span id="lifetimeSuccess">0</span><span class="percentage"
+                                        id="lifetimeSuccessPercent" style="color: var(--success)">(0%)</span></div>
+                                <div class="stat-item-label">Successful</div>
+                                <div class="stat-item-sub-label" id="lifetimeSuccessTime"></div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-item-value"><span id="lifetimeFailed">0</span><span class="percentage"
+                                        id="lifetimeFailedPercent" style="color: var(--error)">(0%)</span></div>
+                                <div class="stat-item-label">Failed</div>
+                                <div class="stat-item-sub-label" id="lifetimeFailedTime"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-            <div class="gpu-section">
-                <h4
-                    style="font-size: 12px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 15px; letter-spacing: 0.5px;">
-                    GPU Status</h4>
-                <div class="gpu-grid" id="gpuGrid"></div>
-            </div>
-            <div class="log-section">
-                <div class="log-header">Recent Activity</div>
-                <div class="log-entries" id="logEntries"></div>
+                <div class="collapsible-section">
+                    <button class="collapsible-header" onclick="toggleCollapse(this)">
+                        <h4>Performance Chart</h4>
+                        <span class="collapse-icon">-</span>
+                    </button>
+                    <div class="collapsible-content">
+                        <div class="chart-container">
+                            <button id="resetZoomBtn" class="reset-zoom-btn" onclick="resetEpochZoom()">Reset
+                                Zoom</button>
+                            <canvas id="framesChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="gpu-section">
+                    <h4
+                        style="font-size: 12px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 15px; letter-spacing: 0.5px;">
+                        GPU Status</h4>
+                    <div class="gpu-grid" id="gpuGrid"></div>
+                </div>
+                <div class="log-section">
+                    <div class="log-header">Recent Activity</div>
+                    <div class="log-entries" id="logEntries"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -803,24 +1106,147 @@
         </div>
     </div>
 
+    <div class="modal-backdrop" id="logViewerModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="logModalTitle">Log Viewer</h3>
+                <button class="close-btn" onclick="closeLogViewer()">×</button>
+            </div>
+            <div class="modal-footer" style="border-top:none; padding:10px 18px 4px;">
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                    <label style="font-size:11px; color:var(--text-secondary);">Host:
+                        <select id="logHostSelect" class="select-small" onchange="refreshLogViewer()"></select>
+                    </label>
+                    <label style="font-size:11px; color:var(--text-secondary);">Lines:
+                        <input id="logLinesInput" class="input-small" type="number" min="50" max="5000" step="50"
+                            value="500" style="width:80px;" onkeydown="if(event.key==='Enter'){refreshLogViewer();}" />
+                    </label>
+                    <button class="refresh-btn" onclick="refreshLogViewer()">Refresh</button>
+                    <span id="logStatus" class="pill">Idle</span>
+                </div>
+                <div style="font-size:10px; color:var(--text-secondary);">Auto-refresh every 30s</div>
+            </div>
+            <div class="modal-body">
+                <div id="logLines" class="log-lines"></div>
+            </div>
+            <div class="modal-footer">
+                <div style="font-size:11px; color:var(--text-secondary);">Only recent tail of the file is shown.</div>
+                <button class="header-btn" onclick="closeLogViewer()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const { ipcRenderer, shell } = require('electron');
         const os = require('os');
         const qrcode = require('qrcode-generator');
 
-        let selectedNodeName = 'local';
+        let selectedNodeName = 'home';
         let networkNodes = [];
         let localData = { stats: null, gpus: [], logEntries: [], processStatus: { rndr: false, watchdog: false } };
         const MAX_LOG_ENTRIES = 25;
         const localMachineName = os.hostname();
+        let framesChart = null;
+        let epochBounds = null;
+        let userEpochCustomView = false;
+        function minimizeWindow() { ipcRenderer.send('minimize-window'); }
+        function maximizeWindow() { ipcRenderer.send('maximize-window'); }
+        function closeWindow() { ipcRenderer.send('close-window'); }
+        function openLogFile() { ipcRenderer.send('open-log-file'); }
+        function openReportGenerator() { ipcRenderer.send('open-report-generator'); }
+        function toggleTheme() { ipcRenderer.send('toggle-theme'); }
 
-        window.addEventListener('DOMContentLoaded', () => {
-            ipcRenderer.send('toggle-hosting', true);
+        let logViewerTimer = null;
+        function openLogViewer() {
+            const modal = document.getElementById('logViewerModal');
+            modal.style.display = 'flex';
+            buildLogHostSelect();
+            refreshLogViewer();
+            if (logViewerTimer) clearInterval(logViewerTimer);
+            logViewerTimer = setInterval(() => { if (modal.style.display === 'flex') refreshLogViewer(true); }, 30000);
+        }
+
+        function closeLogViewer() {
+            const modal = document.getElementById('logViewerModal');
+            modal.style.display = 'none';
+            if (logViewerTimer) clearInterval(logViewerTimer);
+        }
+
+        function buildLogHostSelect() {
+            const sel = document.getElementById('logHostSelect');
+            const currentVal = sel.value;
+            sel.innerHTML = '';
+
+            const nodes = [{ name: localMachineName }, ...networkNodes];
+            nodes.forEach(n => {
+                const opt = document.createElement('option');
+                opt.value = n.name;
+                opt.textContent = n.name;
+                sel.appendChild(opt);
+            });
+
+            if (currentVal && nodes.some(n => n.name === currentVal)) {
+                sel.value = currentVal;
+            } else if (selectedNodeName !== 'home') {
+                sel.value = selectedNodeName;
+            } else {
+                sel.value = localMachineName;
+            }
+        }
+
+        async function refreshLogViewer(isAuto) {
+            const host = document.getElementById('logHostSelect').value;
+            const lines = parseInt(document.getElementById('logLinesInput').value) || 500;
+            const status = document.getElementById('logStatus');
+            status.textContent = isAuto ? 'Auto updating...' : 'Loading...';
+            try {
+                const data = await ipcRenderer.invoke('get-remote-log', { host, lines });
+                const container = document.getElementById('logLines');
+                container.innerHTML = data.lines.map(l => `<div class="log-line ${getLogEntryClass(l)}">${l.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))}</div>`).join('');
+                container.scrollTop = container.scrollHeight;
+                status.textContent = `Showing ${data.lines.length} lines from ${data.host}`;
+                document.getElementById('logModalTitle').textContent = `Log Viewer - ${data.host}`;
+            } catch (e) {
+                console.error('Failed to refresh log viewer:', e);
+                status.textContent = 'Error loading log';
+            }
+        }
+
+        function toggleCollapse(button) {
+            const content = button.nextElementSibling;
+            content.classList.toggle('collapsed');
+            const icon = button.querySelector('.collapse-icon');
+            if (content.classList.contains('collapsed')) {
+                icon.style.transform = 'rotate(180deg)';
+                icon.textContent = '+';
+            } else {
+                icon.style.transform = 'rotate(0deg)';
+                icon.textContent = '-';
+            }
+        }
+
+        function toggleHosting(isEnabled) {
+            ipcRenderer.send('toggle-hosting', isEnabled);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const hostingToggle = document.getElementById('hostingToggle');
+            const networkAdapterSelect = document.getElementById('networkAdapterSelect');
+
             hostingToggle.checked = true;
-            selectNode('local');
-            updateNextEpoch();
+            ipcRenderer.send('toggle-hosting', true);
 
+            selectNode('home');
+            updateNextEpoch();
             ipcRenderer.send('get-network-adapters');
+
+            hostingToggle.addEventListener('change', () => toggleHosting(hostingToggle.checked));
+
+            networkAdapterSelect.addEventListener('change', (event) => {
+                ipcRenderer.send('set-network-adapter', event.target.value);
+                const hostStatus = document.getElementById('hostStatus');
+                hostStatus.innerHTML += ' <span style="color: var(--warning);">(Restart app to apply)</span>';
+            });
 
             setInterval(() => {
                 updateNextEpoch();
@@ -834,17 +1260,11 @@
             }, 10000);
         });
 
-        const networkAdapterSelect = document.getElementById('networkAdapterSelect');
-        networkAdapterSelect.addEventListener('change', (event) => {
-            ipcRenderer.send('set-network-adapter', event.target.value);
-            const hostStatus = document.getElementById('hostStatus');
-            hostStatus.innerHTML += ' <span style="color: var(--warning);">(Restart app to apply)</span>';
-        });
+        ipcRenderer.on('theme-changed', (event, theme) => { document.body.className = theme === 'light' ? 'light' : ''; });
 
         ipcRenderer.on('network-adapters-ready', (event, data) => {
             const select = document.getElementById('networkAdapterSelect');
             select.innerHTML = '';
-
             data.adapters.forEach(adapter => {
                 const option = document.createElement('option');
                 option.value = adapter.address;
@@ -855,25 +1275,6 @@
                 select.appendChild(option);
             });
         });
-
-        function selectNetworkAdapter(address) {
-            if (address) {
-                ipcRenderer.send('set-network-adapter', address);
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            initializeHostingToggle();
-            ipcRenderer.send('get-network-adapters');
-        });
-
-        function minimizeWindow() { ipcRenderer.send('minimize-window'); }
-        function maximizeWindow() { ipcRenderer.send('maximize-window'); }
-        function closeWindow() { ipcRenderer.send('close-window'); }
-        function openLogFile() { ipcRenderer.send('open-log-file'); }
-        function openReportGenerator() { ipcRenderer.send('open-report-generator'); }
-        function toggleTheme() { ipcRenderer.send('toggle-theme'); }
-        ipcRenderer.on('theme-changed', (event, theme) => { document.body.className = theme === 'light' ? 'light' : ''; });
 
         ipcRenderer.on('loading-status', (event, status) => { document.getElementById('loadingText').textContent = status; });
         ipcRenderer.on('loading-progress', (event, progress) => { document.getElementById('loadingProgress').style.width = progress + '%'; });
@@ -913,7 +1314,9 @@
         ipcRenderer.on('network-nodes-update', (event, nodes) => {
             networkNodes = nodes;
             updateNodeList();
-            if (selectedNodeName !== 'local') {
+            if (selectedNodeName === 'home') {
+                renderAllNodesView();
+            } else if (selectedNodeName !== 'local') {
                 const updatedNodeData = networkNodes.find(n => n.name === selectedNodeName);
                 displayNodeData(selectedNodeName, updatedNodeData ? updatedNodeData.data : null);
             }
@@ -923,6 +1326,15 @@
             const nodeList = document.getElementById('nodeList');
             const localRndrStatusClass = localData.processStatus.rndr ? 'status-online' : 'status-offline';
             const localDailyFrames = localData.stats ? localData.stats.dailyFrames : { successful: 0, failed: 0 };
+
+            const homeButtonHTML = `
+                <li class="node-item ${selectedNodeName === 'home' ? 'active' : ''}" onclick="selectNode('home')">
+                    <div class="node-info" style="flex-direction: row; align-items: center; gap: 10px;">
+                        <span style="font-size: 18px;"></span>
+                        <span class="node-name">Home</span>
+                    </div>
+                </li>`;
+
             const localNodeHTML = `
                 <li class="node-item ${selectedNodeName === 'local' ? 'active' : ''}" onclick="selectNode('local')">
                     <div class="node-indicators">
@@ -956,19 +1368,99 @@
                     </li>`;
             }).join('');
 
-            nodeList.innerHTML = localNodeHTML + remoteNodesHTML;
+            nodeList.innerHTML = homeButtonHTML + localNodeHTML + remoteNodesHTML;
         }
 
         function selectNode(nodeName) {
             selectedNodeName = nodeName;
             updateNodeList();
 
-            if (nodeName === 'local') {
-                displayNodeData(localMachineName, localData);
+            const singleNodeView = document.getElementById('singleNodeView');
+            const allNodesView = document.getElementById('allNodesView');
+
+            if (nodeName === 'home') {
+                singleNodeView.style.display = 'none';
+                allNodesView.style.display = 'grid';
+                renderAllNodesView();
             } else {
-                const node = networkNodes.find(n => n.name === nodeName);
-                displayNodeData(node.name, node ? node.data : null);
+                singleNodeView.style.display = 'block';
+                allNodesView.style.display = 'none';
+                if (nodeName === 'local') {
+                    displayNodeData(localMachineName, localData);
+                } else {
+                    const node = networkNodes.find(n => n.name === nodeName);
+                    displayNodeData(node.name, node ? node.data : null);
+                }
             }
+        }
+
+        function renderAllNodesView() {
+            const allNodesView = document.getElementById('allNodesView');
+            if (!allNodesView) return;
+
+            const allNodesForView = [
+                { name: localMachineName, data: localData },
+                ...networkNodes
+            ];
+
+            allNodesView.innerHTML = allNodesForView.map(node => {
+                const data = node.data;
+                if (!data) {
+                    return `
+                    <div class="node-card">
+                        <div class="node-card-header">${node.name}</div>
+                        <div style="color: var(--error);">Offline</div>
+                    </div>`;
+                }
+
+                const gpus = data.gpus || data.gpuInfo || [];
+                const gpuSummary = gpus.length > 0
+                    ? gpus.map(g => `GPU${g.index}: ${g.temperature}°C / ${g.gpuUtilization}%`).join(' | ')
+                    : 'N/A';
+
+                let lastFrameText = 'N/A';
+                if (data.stats?.lastFrameTime) {
+                    const frameTime = new Date(data.stats.lastFrameTime);
+                    const diff = new Date() - frameTime;
+                    const hours = Math.floor(diff / 3600000);
+                    const minutes = Math.floor((diff % 3600000) / 60000);
+                    const timeAgo = hours > 0 ? `(${hours}h ${minutes}m ago)` : `(${minutes}m ago)`;
+                    lastFrameText = `${frameTime.toLocaleString()} <span class="time-ago">${timeAgo}</span>`;
+                }
+
+                const thermalStatus = gpus.some(g => g.isThrottling)
+                    ? '<span style="color: var(--warning);">Throttling</span>'
+                    : '<span style="color: var(--success);">Nominal</span>';
+
+                const processStatus = data.processStatus || { rndr: data.rndrStatus, watchdog: data.watchdogStatus };
+
+                return `
+                <div class="node-card">
+                    <div class="node-card-header">${node.name}</div>
+                    <div class="node-card-grid">
+                        <div class="node-card-item">
+                            <div class="label">RNDR Client</div>
+                            ${processStatus.rndr ? '<span style="color: var(--success);">Running</span>' : '<span style="color: var(--error);">Stopped</span>'}
+                        </div>
+                        <div class="node-card-item">
+                            <div class="label">Watchdog</div>
+                            ${processStatus.watchdog ? '<span style="color: var(--success);">Running</span>' : '<span style="color: var(--error);">Stopped</span>'}
+                        </div>
+                        <div class="node-card-item">
+                            <div class="label">Thermal Status</div>
+                            ${thermalStatus}
+                        </div>
+                        <div class="node-card-item">
+                            <div class="label">Last Frame</div>
+                            ${lastFrameText}
+                        </div>
+                    </div>
+                    <div class="node-card-gpus">
+                        <div class="label">GPUs (Temp / Util)</div>
+                        ${gpuSummary}
+                    </div>
+                </div>`;
+            }).join('');
         }
 
         function displayNodeData(nodeName, data) {
@@ -994,6 +1486,12 @@
 
             const logs = data.logEntries || (data.recentLogs ? data.recentLogs.map(line => ({ text: line, className: getLogEntryClass(line) })) : []);
             displayLogEntries(logs);
+
+            if (data.stats && data.stats.lastFrameTime) {
+                updateTimeAgo(new Date(data.stats.lastFrameTime));
+            } else {
+                document.getElementById('timeAgo').textContent = '';
+            }
         }
 
         function updateProcessStatusDisplay(status) {
@@ -1028,11 +1526,36 @@
                 const el = document.getElementById(id);
                 if (el) el.textContent = val;
             };
+
+            if (stats && stats.lifetimeFrames) {
+                const lifetimeTotalFrames = stats.lifetimeFrames.successful + stats.lifetimeFrames.failed;
+                const lifetimeSuccessPercent = lifetimeTotalFrames > 0 ? Math.round((stats.lifetimeFrames.successful / lifetimeTotalFrames) * 100) : 0;
+                const lifetimeFailedPercent = lifetimeTotalFrames > 0 ? Math.round((stats.lifetimeFrames.failed / lifetimeTotalFrames) * 100) : 0;
+                set('lifetimeTotal', lifetimeTotalFrames);
+                set('lifetimeSuccess', stats.lifetimeFrames.successful);
+                set('lifetimeFailed', stats.lifetimeFrames.failed);
+                set('lifetimeSuccessPercent', `(${lifetimeSuccessPercent}%)`);
+                set('lifetimeFailedPercent', `(${lifetimeFailedPercent}%)`);
+                set('lifetimeSuccessTime', formatSeconds(stats.lifetimeFrames.successfulTime));
+                set('lifetimeFailedTime', formatSeconds(stats.lifetimeFrames.failedTime));
+            } else {
+                ['lifetimeTotal', 'lifetimeSuccess', 'lifetimeFailed'].forEach(id => set(id, 'N/A'));
+                ['lifetimeSuccessPercent', 'lifetimeFailedPercent'].forEach(id => set(id, ''));
+                set('lifetimeSuccessTime', '');
+                set('lifetimeFailedTime', '');
+            }
+
             if (!stats) {
-                ['dailyTotal', 'dailySuccess', 'dailyFailed', 'epochTotal', 'epochSuccess', 'epochFailed', 'lifetimeTotal', 'lifetimeSuccess', 'lifetimeFailed'].forEach(id => set(id, 'N/A'));
-                ['dailySuccessPercent', 'dailyFailedPercent', 'epochSuccessPercent', 'epochFailedPercent', 'lifetimeSuccessPercent', 'lifetimeFailedPercent'].forEach(id => set(id, ''));
+                ['dailyTotal', 'dailySuccess', 'dailyFailed', 'epochTotal', 'epochSuccess', 'epochFailed'].forEach(id => set(id, 'N/A'));
+                ['dailySuccessPercent', 'dailyFailedPercent', 'epochSuccessPercent', 'epochFailedPercent'].forEach(id => set(id, ''));
                 set('lastFrameTime', 'Offline');
                 set('timeAgo', '');
+                set('dailySuccessTime', '');
+                set('dailyFailedTime', '');
+                set('epochSuccessTime', '');
+                set('epochFailedTime', '');
+                if (framesChart) framesChart.destroy();
+                framesChart = null;
                 return;
             }
 
@@ -1042,27 +1565,24 @@
             set('dailyTotal', dailyTotalFrames);
             set('dailySuccess', stats.dailyFrames.successful);
             set('dailyFailed', stats.dailyFrames.failed);
-            set('dailySuccessPercent', `(${dailySuccessPercent}%)`);
-            set('dailyFailedPercent', `(${dailyFailedPercent}%)`);
+            set('dailySuccessPercent', dailyTotalFrames > 0 ? `(${dailySuccessPercent}%)` : '');
+            set('dailyFailedPercent', dailyTotalFrames > 0 ? `(${dailyFailedPercent}%)` : '');
 
-            const epochFrames = stats.epochFrames || { successful: 0, failed: 0 };
+            set('dailySuccessTime', formatSeconds(stats.dailyFrames.successfulTime));
+            set('dailyFailedTime', formatSeconds(stats.dailyFrames.failedTime));
+
+            const epochFrames = stats.epochFrames || { successful: 0, failed: 0, successfulTime: 0, failedTime: 0 };
             const epochTotalFrames = epochFrames.successful + epochFrames.failed;
             const epochSuccessPercent = epochTotalFrames > 0 ? Math.round((epochFrames.successful / epochTotalFrames) * 100) : 0;
             const epochFailedPercent = epochTotalFrames > 0 ? Math.round((epochFrames.failed / epochTotalFrames) * 100) : 0;
             set('epochTotal', epochTotalFrames);
             set('epochSuccess', epochFrames.successful);
             set('epochFailed', epochFrames.failed);
-            set('epochSuccessPercent', `(${epochSuccessPercent}%)`);
-            set('epochFailedPercent', `(${epochFailedPercent}%)`);
+            set('epochSuccessPercent', epochTotalFrames > 0 ? `(${epochSuccessPercent}%)` : '');
+            set('epochFailedPercent', epochTotalFrames > 0 ? `(${epochFailedPercent}%)` : '');
 
-            const lifetimeTotalFrames = stats.lifetimeFrames.successful + stats.lifetimeFrames.failed;
-            const lifetimeSuccessPercent = lifetimeTotalFrames > 0 ? Math.round((stats.lifetimeFrames.successful / lifetimeTotalFrames) * 100) : 0;
-            const lifetimeFailedPercent = lifetimeTotalFrames > 0 ? Math.round((stats.lifetimeFrames.failed / lifetimeTotalFrames) * 100) : 0;
-            set('lifetimeTotal', lifetimeTotalFrames);
-            set('lifetimeSuccess', stats.lifetimeFrames.successful);
-            set('lifetimeFailed', stats.lifetimeFrames.failed);
-            set('lifetimeSuccessPercent', `(${lifetimeSuccessPercent}%)`);
-            set('lifetimeFailedPercent', `(${lifetimeFailedPercent}%)`);
+            set('epochSuccessTime', formatSeconds(epochFrames.successfulTime));
+            set('epochFailedTime', formatSeconds(epochFrames.failedTime));
 
             if (stats.lastFrameTime) {
                 const frameTime = new Date(stats.lastFrameTime);
@@ -1071,6 +1591,241 @@
             } else {
                 set('lastFrameTime', 'No frames yet');
                 set('timeAgo', '');
+            }
+
+            updateChart(stats);
+        }
+
+        function formatSeconds(seconds) {
+            if (seconds === undefined || seconds === null || isNaN(seconds)) {
+                return '';
+            }
+            if (seconds === 0) return '0s';
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.round(seconds % 60);
+            let str = '';
+            if (h > 0) str += `${h}h `;
+            if (m > 0) str += `${m}m `;
+            if (s > 0 && h === 0) str += `${s}s`;
+            return str.trim();
+        }
+
+        function updateChart(stats) {
+            const canvas = document.getElementById('framesChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (!stats || !stats.epochFrames) return;
+
+            const epochSuccess = stats.epochFrames.successfulTimestamps || [];
+            const epochFailed = stats.epochFrames.failedTimestamps || [];
+            const allFrames = [
+                ...epochSuccess.map(item => ({ ...item, type: 'success' })),
+                ...epochFailed.map(item => ({ ...item, type: 'failed' }))
+            ].sort((a, b) => a.timestampUtc - b.timestampUtc);
+            const chartData = allFrames.map((item, index) => ({
+                x: index,
+                y: item.time || 0,
+                time: item.time,
+                hash: item.hash,
+                timestamp: item.timestampUtc,
+                type: item.type,
+                backgroundColor: item.type === 'success' ? 'rgba(0,255,136,0.6)' : 'rgba(255,51,102,0.6)',
+                borderColor: item.type === 'success' ? 'rgba(0,255,136,1)' : 'rgba(255,51,102,1)'
+            }));
+
+            if (framesChart) {
+                framesChart.data.datasets[0].data = chartData;
+                framesChart.update('none');
+                return;
+            }
+
+            const bodyStyles = getComputedStyle(document.body);
+            const textColor = bodyStyles.getPropertyValue('--text-secondary');
+            const gridColor = bodyStyles.getPropertyValue('--border');
+
+            framesChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    datasets: [{
+                        label: 'Frames',
+                        data: chartData,
+                        backgroundColor: function (context) {
+                            return context.parsed ? context.raw.backgroundColor : 'rgba(0,255,136,0.6)';
+                        },
+                        borderColor: function (context) {
+                            return context.parsed ? context.raw.borderColor : 'rgba(0,255,136,1)';
+                        },
+                        borderWidth: 1,
+                        barThickness: 6
+                    }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    parsing: false,
+                    interaction: { mode: 'point', intersect: true },
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const elementIndex = elements[0].index;
+                            const dataPoint = chartData[elementIndex];
+
+                            if (dataPoint && dataPoint.hash) {
+                                if (navigator.clipboard && navigator.clipboard.writeText) {
+                                    navigator.clipboard.writeText(dataPoint.hash).then(() => {
+                                        console.log('Hash copied to clipboard:', dataPoint.hash);
+                                        showCopyFeedback(event.native);
+                                    }).catch(err => {
+                                        console.error('Failed to copy hash:', err);
+                                        fallbackCopyToClipboard(dataPoint.hash, event.native);
+                                    });
+                                } else {
+                                    fallbackCopyToClipboard(dataPoint.hash, event.native);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            position: 'bottom',
+                            title: {
+                                display: true,
+                                text: 'Current Epoch Frames',
+                                color: textColor
+                            },
+                            ticks: {
+                                color: textColor,
+                                callback: function (value) {
+                                    if (value % 10 === 0) return Math.floor(value);
+                                    return '';
+                                }
+                            },
+                            grid: { color: gridColor }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Render Time (s)',
+                                color: textColor
+                            },
+                            ticks: { color: textColor },
+                            grid: { color: gridColor }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function (tooltipItems) {
+                                    const item = tooltipItems[0];
+                                    const dataPoint = chartData[item.dataIndex];
+
+                                    if (dataPoint && dataPoint.timestamp) {
+                                        return new Date(dataPoint.timestamp).toLocaleString();
+                                    }
+                                    return 'Frame #' + item.dataIndex;
+                                },
+                                label: function (ctx) {
+                                    const dataPoint = chartData[ctx.dataIndex];
+
+                                    let label = dataPoint.type === 'success' ? 'Successful' : 'Failed';
+                                    if (dataPoint && dataPoint.time !== undefined && dataPoint.time !== null) {
+                                        label += `: ${formatSeconds(dataPoint.time)}`;
+                                    }
+                                    if (dataPoint && dataPoint.hash) {
+                                        label += ` | Hash: ${dataPoint.hash}`;
+                                    }
+                                    label += ' | Click to copy hash';
+                                    return label;
+                                }
+                            }
+                        },
+                        zoom: {
+                            pan: { enabled: true, mode: 'x' },
+                            zoom: {
+                                wheel: { enabled: true },
+                                pinch: { enabled: true },
+                                mode: 'x'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function showCopyFeedback(event) {
+            const feedback = document.createElement('div');
+            feedback.textContent = 'Hash copied!';
+            feedback.style.cssText = `
+                position: fixed;
+                background: var(--accent);
+                color: #000;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 12px;
+                font-weight: 500;
+                z-index: 10000;
+                pointer-events: none;
+                left: ${event.clientX}px;
+                top: ${event.clientY - 30}px;
+                animation: fadeInOut 1.5s ease-out forwards;
+            `;
+
+            if (!document.querySelector('#copyFeedbackStyle')) {
+                const style = document.createElement('style');
+                style.id = 'copyFeedbackStyle';
+                style.textContent = `
+                    @keyframes fadeInOut {
+                        0% { opacity: 0; transform: translateY(10px); }
+                        20% { opacity: 1; transform: translateY(0); }
+                        80% { opacity: 1; transform: translateY(0); }
+                        100% { opacity: 0; transform: translateY(-10px); }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            document.body.appendChild(feedback);
+            setTimeout(() => feedback.remove(), 1500);
+        }
+
+        function fallbackCopyToClipboard(text, event) {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+                document.execCommand('copy');
+                console.log('Hash copied to clipboard (fallback):', text);
+                const feedbackEvent = event || { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 };
+                showCopyFeedback(feedbackEvent);
+            } catch (err) {
+                console.error('Fallback copy failed:', err);
+            }
+
+            document.body.removeChild(textArea);
+        }
+
+        function resetEpochZoom() {
+            if (!framesChart) return;
+            framesChart.destroy();
+            framesChart = null;
+            if (localData.stats || (selectedNodeName !== 'local' && networkNodes.length > 0)) {
+                const currentStats = selectedNodeName === 'local' ? localData.stats :
+                    networkNodes.find(n => n.name === selectedNodeName)?.data?.stats;
+                if (currentStats) {
+                    updateChart(currentStats);
+                }
             }
         }
 
@@ -1130,13 +1885,10 @@
             document.getElementById('nextEpoch').textContent = `${days}d ${hours}h`;
         }
 
-        const hostingToggle = document.getElementById('hostingToggle');
-        function toggleHosting(isEnabled) {
-            ipcRenderer.send('toggle-hosting', isEnabled);
-        }
         ipcRenderer.on('hosting-enabled-updated', (event, isEnabled) => {
-            hostingToggle.checked = isEnabled;
+            document.getElementById('hostingToggle').checked = isEnabled;
         });
+
         ipcRenderer.on('hosting-status-update', (event, { currentHostName }) => {
             const statusEl = document.getElementById('hostStatus');
             if (currentHostName) {

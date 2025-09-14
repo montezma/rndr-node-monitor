@@ -1,6 +1,6 @@
 {
   "name": "rndr-node-monitor",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "description": "A monitor for RNDR network nodes.",
   "main": "main.js",
   "scripts": {

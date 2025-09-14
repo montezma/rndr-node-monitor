@@ -9,27 +9,20 @@
 <img width="1920" height="1340" alt="features label for rndr app2" src="https://github.com/user-attachments/assets/33994076-eb37-4d6d-ae61-d16e34b60438" />
 
 
-A cross-platform monitoring tool for RNDR network nodes. This application provides real-time statistics, GPU health monitoring, and network-wide visibility for all connected render clients in a self-hosting dashboard.
+A cross-platform monitoring tool for RNDR nodes running on your local network.
 
-### Core Monitoring
-* **Live GPU Stats:** Shows real-time GPU temperature, usage, memory, and power state.
-* **Process Status:** Checks if the RNDR Client and Watchdog processes are running.
-* **Recent Activity Log:** Displays the last 25 lines from the RNDR log file so you can see the latest events.
+## Features
 
-### Frame Tracking
-* **Lifetime Stats:** Keeps a running total of all successful and failed frames since you started using the app.
-* **Epoch Stats:** Tracks successful and failed frames for the current 7-day RNDR work period.
-* **24-Hour Stats:** Shows a consistent count of successful and failed frames from the last 24 hours.
-
-### Networking & Web UI
-* **Multi-Node View:** Automatically discovers and displays stats for all other RNDR nodes running the monitor on your local network.
-* **Web Dashboard:** Can host a simple web page at `http://render.local:34568` that you can access from any device on your network to see the status of all your nodes.
-* **Network Adapter Selection:** Allows you to choose which network connection (e.g., Ethernet or Wi-Fi) to use for hosting the web dashboard.
-
-### Reporting & Utilities
-* **Epoch Reports:** Lets you generate and export `.csv` reports of your render history for any previous work epoch.
-* **Quick Access:** Includes buttons to directly open your RNDR log file and the folder where reports are saved.
-* **Theme Toggle:** You can switch the app's appearance between a dark and light theme. (Only for the APP, not the web view)
+- **Multi-Node Monitoring:** Discover and monitor all RNDR nodes on your local network.
+- **Web Interface:** Access a comprehensive web dashboard from any device on your network, including mobile phones.
+- **Detailed Statistics:** Track lifetime, daily, and epoch-based frame statistics (successful/failed).
+- **GPU Monitoring:** View real-time GPU stats including temperature, utilization, memory usage, and power state.
+- **Performance Chart:** Visualizes frame render times for the current epoch, allowing you to spot performance trends and outliers. Includes zoom, pan, and click-to-copy hash functionality.
+- **Home Panel:** A unified dashboard view to monitor the status of all connected nodes at a glance, including client status, thermal throttling, and last frame activity.
+- **Remote Log Viewer:** Access and view the `rndr_log.txt` file from any machine on the network directly through the main application or the web interface.
+- **Epoch Reports:** Generate CSV reports of render data for any completed epoch.
+- **Process Status:** See if the RNDR client and watchdog processes are running.
+- **Theming:** Switch between light and dark modes.
 
 ## Support the Project
 
