@@ -24,6 +24,9 @@ let parsedEpochData = new Map();
 let jobStartTimes = new Map();
 let jobStartQueue = [];
 
+const MAX_INFERRED_JOB_SECONDS = 6 * 60 * 60;
+const MAX_PAIR_WINDOW_MS = 12 * 60 * 60 * 1000;
+
 const USER_DATA_PATH = app.getPath('userData');
 const REPORTS_PATH = path.join(USER_DATA_PATH, 'reports');
 const LOG_PATH = path.join(os.homedir(), 'AppData', 'Local', 'OtoyRndrNetwork', 'rndr_log.txt');
@@ -499,16 +502,26 @@ function parseLocalDateTimeMs(ts) {
 }
 
 function consumeStartByHash(targetHash) {
+  return consumeStartByHashLatest(targetHash, Date.now());
+}
+
+function consumeStartByHashLatest(targetHash, endMs) {
   if (!targetHash) return null;
-  const idx = jobStartQueue.findIndex(e => e.hash === targetHash);
-  if (idx === -1) return null;
-  const entry = jobStartQueue.splice(idx, 1)[0];
-  return entry;
+  for (let i = jobStartQueue.length - 1; i >= 0; i--) {
+    const entry = jobStartQueue[i];
+    if (entry.hash === targetHash) {
+      if (endMs && endMs - entry.ts > MAX_PAIR_WINDOW_MS) {
+        continue;
+      }
+      jobStartQueue.splice(i, 1);
+      return entry;
+    }
+  }
+  return null;
 }
 
 function consumeOldestStart() {
-  if (!jobStartQueue.length) return null;
-  return jobStartQueue.shift();
+  return null;
 }
 
 function parseLine(line, state) {
@@ -535,6 +548,11 @@ function parseLine(line, state) {
     const m = line.match(/config hash: (\w+)/);
     const hash = m && m[1] ? m[1] : `unknown_${lineTime}`;
     jobStartQueue.push({ hash, ts: lineTime });
+
+    const cutoff = lineTime - (24 * 60 * 60 * 1000);
+    while (jobStartQueue.length && jobStartQueue[0].ts < cutoff) {
+      jobStartQueue.shift();
+    }
     if (jobStartQueue.length > 5000) jobStartQueue.shift();
     return;
   }
@@ -546,15 +564,16 @@ function parseLine(line, state) {
 
   if (line.includes('job completed successfully')) {
     const explicitRt = extractRenderTime(line);
-    let hash = extractHash();
+    const hash = extractHash();
     let start = null;
-    if (hash) start = consumeStartByHash(hash);
-    if (!start) start = consumeOldestStart();
-    if (!hash && start) hash = start.hash;
+    if (hash) start = consumeStartByHashLatest(hash, lineTime);
 
-    const rt = explicitRt != null ? explicitRt : (start ? Math.max(0, (lineTime - start.ts) / 1000) : 0);
+    let rt = explicitRt != null ? explicitRt : (start ? Math.max(0, (lineTime - start.ts) / 1000) : 0);
+    if (explicitRt == null && (rt < 0 || rt > MAX_INFERRED_JOB_SECONDS)) {
+      rt = 0;
+    }
+
     const point = { ts: lineTime, time: rt, timestamp: lineTime, timestampUtc: utcMs, isoUtc, renderTime: rt, hash };
-
     state.stats.lifetimeFrames.successful++;
     state.stats.lifetimeFrames.successfulTime = (state.stats.lifetimeFrames.successfulTime || 0) + rt;
     if (lineTime > dayAgo) state.stats.dailyFrames.successfulTimestamps.push(point);
@@ -567,10 +586,13 @@ function parseLine(line, state) {
   }
 
   if (line.includes('job failed')) {
-    const explicitRt = extractRenderTime(line);
     const hash = extractHash();
-    const start = consumeStartByHash(hash) || consumeOldestStart();
-    const rt = explicitRt != null ? explicitRt : (start ? Math.max(0, (lineTime - (start.ts || lineTime)) / 1000) : 0);
+    const start = hash ? consumeStartByHashLatest(hash, lineTime) : null;
+
+    let rt = start ? Math.max(0, (lineTime - start.ts) / 1000) : 0;
+    if (rt < 0 || rt > MAX_INFERRED_JOB_SECONDS) {
+      rt = 0;
+    }
 
     const point = { ts: lineTime, time: rt, timestamp: lineTime, timestampUtc: utcMs, isoUtc, renderTime: rt, hash };
     state.stats.lifetimeFrames.failed++;
@@ -1000,3 +1022,373 @@ ipcMain.on('close-window', (event) => {
   const window = BrowserWindow.fromWebContents(event.sender);
   if (window) window.close();
 });
+
+function parseTs(ts) {
+  const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(ts);
+  if (!m) return null;
+  const [_, Y, M, D, h, mnt, s] = m;
+  return new Date(
+    Number(Y),
+    Number(M) - 1,
+    Number(D),
+    Number(h),
+    Number(mnt),
+    Number(s),
+    0
+  );
+}
+
+function secondsBetween(a, b) {
+  return a && b ? (b - a) / 1000 : null;
+}
+
+function fmtSeconds(totalSec) {
+  if (totalSec == null) return '-';
+  const s = Math.max(0, Math.round(totalSec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+}
+
+function avg(arr) {
+  if (!arr || arr.length === 0) return null;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+function min(arr) {
+  if (!arr || arr.length === 0) return null;
+  return arr.reduce((a, b) => (a < b ? a : b), arr[0]);
+}
+
+function max(arr) {
+  if (!arr || arr.length === 0) return null;
+  return arr.reduce((a, b) => (a > b ? a : b), arr[0]);
+}
+
+function parseLog(content) {
+  const lines = content.split(/\r?\n/);
+
+  const lineRe = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(\w+):\s+\[(\d+)\]\s+(.*)$/;
+  const jobs = [];
+  let currentJob = null;
+  let lastUsableGpus = null;
+
+  const unmatched = { successes: 0, fails: 0, cancels: 0 };
+  let firstTs = null;
+  let lastTs = null;
+
+  let octaneDetectOpen = null;
+
+  const findPendingJobBy = (predicate) => {
+    for (let i = jobs.length - 1; i >= 0; i--) {
+      const j = jobs[i];
+      if (j.status === 'pending' && predicate(j)) return j;
+    }
+    return null;
+  };
+
+  const attachToMostRecentPending = () =>
+    findPendingJobBy(() => true) || currentJob || null;
+
+  for (let raw of lines) {
+    if (!raw.trim()) continue;
+    const m = lineRe.exec(raw);
+    if (!m) continue;
+
+    const [, tsStr, level, threadId, msg] = m;
+    const ts = parseTs(tsStr);
+    if (!firstTs) firstTs = ts;
+    lastTs = ts;
+
+    let rx;
+    if ((rx = /starting a new render job with config hash: ([a-f0-9]+)/i.exec(msg))) {
+      const hash = rx[1].toLowerCase();
+      const job = {
+        id: jobs.length + 1,
+        configHash: hash,
+        jobStartTs: ts,
+        status: 'pending',
+        steps: {},
+        reportedSeconds: null,
+        wallSeconds: null,
+        overheadSeconds: null,
+        gpusDetected: lastUsableGpus ?? null,
+        octaneDevices: null
+      };
+      jobs.push(job);
+      currentJob = job;
+      octaneDetectOpen = null;
+      continue;
+    }
+
+    if ((rx = /(\d+)\s+usable gpus detected/i.exec(msg))) {
+      lastUsableGpus = Number(rx[1]);
+      if (currentJob && currentJob.status === 'pending' && currentJob.gpusDetected == null) {
+        currentJob.gpusDetected = lastUsableGpus;
+      }
+      octaneDetectOpen = null;
+      continue;
+    }
+
+    if (/octane gpu devices detected and enabled/i.test(msg)) {
+      octaneDetectOpen = { ts, count: 0 };
+      if (currentJob) currentJob.steps.octaneDetectTs = ts;
+      continue;
+    }
+    if (/octane gpu device\s+\d+\s+/i.test(msg)) {
+      if (octaneDetectOpen) {
+        octaneDetectOpen.count++;
+        if (currentJob) currentJob.octaneDevices = octaneDetectOpen.count;
+        continue;
+      }
+    } else {
+      octaneDetectOpen = null;
+    }
+
+    if (/Initializing c4d system assets/i.test(msg)) {
+      if (currentJob) currentJob.steps.systemAssetsStart = ts;
+      continue;
+    }
+    if (/Initialized c4d system assets/i.test(msg)) {
+      if (currentJob) currentJob.steps.systemAssetsEnd = ts;
+      continue;
+    }
+    if (/Initializing c4d core/i.test(msg)) {
+      if (currentJob) currentJob.steps.coreStart = ts;
+      continue;
+    }
+    if (/Initialized c4d core/i.test(msg)) {
+      if (currentJob) currentJob.steps.coreEnd = ts;
+      continue;
+    }
+    if (/Loaded c4d scene/i.test(msg)) {
+      if (currentJob) currentJob.steps.sceneLoaded = ts;
+      continue;
+    }
+    if (/Loaded c4d renderer setting/i.test(msg)) {
+      if (currentJob) currentJob.steps.rendererLoaded = ts;
+      continue;
+    }
+    if (/Determined output info/i.test(msg)) {
+      if (currentJob) currentJob.steps.outputInfo = ts;
+      continue;
+    }
+
+    if (/Started c4d rendering/i.test(msg)) {
+      const job = attachToMostRecentPending();
+      if (job) job.steps.renderStart = ts;
+      continue;
+    }
+
+    if ((rx = /sent render finished, job completed successfully \(render time ([\d.]+) seconds\)/i.exec(msg))) {
+      const reported = parseFloat(rx[1]);
+      let job =
+        findPendingJobBy(j => j.steps.renderStart && j.reportedSeconds == null) ||
+        attachToMostRecentPending();
+      if (!job) {
+        unmatched.successes++;
+        continue;
+      }
+      job.steps.renderEnd = ts;
+      job.reportedSeconds = reported;
+      job.wallSeconds = secondsBetween(job.steps.renderStart, job.steps.renderEnd);
+      job.overheadSeconds =
+        job.wallSeconds != null ? job.wallSeconds - job.reportedSeconds : null;
+      job.status = 'success';
+      continue;
+    }
+
+    if (/job was canceled/i.test(msg)) {
+      const job = attachToMostRecentPending();
+      if (job) {
+        job.status = 'canceled';
+        job.steps.cancelTs = ts;
+      } else {
+        unmatched.cancels++;
+      }
+      continue;
+    }
+
+    if ((rx = /job failed with config hash:\s*([a-f0-9]+)/i.exec(msg))) {
+      const hash = rx[1].toLowerCase();
+      const job = findPendingJobBy(j => j.configHash === hash);
+      if (job) {
+        job.status = 'failed';
+        job.steps.failTs = ts;
+      } else {
+        unmatched.fails++;
+      }
+      continue;
+    }
+
+  }
+
+  const successJobs = jobs.filter(j => j.status === 'success');
+  const failedJobs = jobs.filter(j => j.status === 'failed');
+  const canceledJobs = jobs.filter(j => j.status === 'canceled');
+  const pendingJobs = jobs.filter(j => j.status === 'pending');
+
+  const reportedSecs = successJobs.map(j => j.reportedSeconds).filter(v => v != null);
+  const wallSecs = successJobs.map(j => j.wallSeconds).filter(v => v != null);
+  const overheadSecs = successJobs
+    .map(j => j.overheadSeconds)
+    .filter(v => v != null);
+
+  const assetsInit = jobs
+    .map(j => secondsBetween(j.steps.systemAssetsStart, j.steps.systemAssetsEnd))
+    .filter(v => v != null);
+  const coreInit = jobs
+    .map(j => secondsBetween(j.steps.coreStart, j.steps.coreEnd))
+    .filter(v => v != null);
+
+  const ttfp = jobs
+    .map(j => {
+      const rs = j?.steps?.renderStart;
+      if (!rs) return null;
+      const anchors = [
+        j.steps.outputInfo,
+        j.steps.rendererLoaded,
+        j.steps.sceneLoaded,
+        j.steps.coreEnd,
+        j.steps.systemAssetsEnd,
+        j.jobStartTs
+      ].filter(Boolean);
+      if (anchors.length === 0) return null;
+      const lastAnchor = anchors[anchors.length - 1];
+      return secondsBetween(lastAnchor, rs);
+    })
+    .filter(v => v != null);
+
+  const byHash = new Map();
+  for (const j of jobs) {
+    const h = j.configHash || 'unknown';
+    if (!byHash.has(h)) {
+      byHash.set(h, {
+        hash: h,
+        success: 0,
+        failed: 0,
+        canceled: 0,
+        reported: [],
+        wall: []
+      });
+    }
+    const s = byHash.get(h);
+    if (j.status === 'success') {
+      s.success++;
+      if (j.reportedSeconds != null) s.reported.push(j.reportedSeconds);
+      if (j.wallSeconds != null) s.wall.push(j.wallSeconds);
+    } else if (j.status === 'failed') {
+      s.failed++;
+    } else if (j.status === 'canceled') {
+      s.canceled++;
+    }
+  }
+
+  return {
+    firstTs,
+    lastTs,
+    jobs,
+    unmatched,
+    summary: {
+      totalJobsStarted: jobs.length,
+      successCount: successJobs.length,
+      failedCount: failedJobs.length,
+      canceledCount: canceledJobs.length,
+      pendingCount: pendingJobs.length,
+
+      totalReportedSeconds: reportedSecs.reduce((a, b) => a + b, 0),
+      totalWallSeconds: wallSecs.reduce((a, b) => a + b, 0),
+      totalOverheadSeconds: overheadSecs.reduce((a, b) => a + b, 0),
+
+      avgReportedSeconds: avg(reportedSecs),
+      avgWallSeconds: avg(wallSecs),
+      avgOverheadSeconds: avg(overheadSecs),
+
+      minReportedSeconds: min(reportedSecs),
+      maxReportedSeconds: max(reportedSecs),
+
+      avgAssetsInitSeconds: avg(assetsInit),
+      avgCoreInitSeconds: avg(coreInit),
+      avgTimeToFirstPixelSeconds: avg(ttfp)
+    },
+    perHash: Array.from(byHash.values()).sort((a, b) => b.success - a.success)
+  };
+}
+
+function printSummary(res) {
+  const {
+    firstTs,
+    lastTs,
+    unmatched,
+    summary: s
+  } = res;
+
+  console.log('RNDR log analysis');
+  console.log('-----------------');
+  console.log(`Span: ${firstTs?.toISOString?.() ?? '-'} → ${lastTs?.toISOString?.() ?? '-'}`);
+  if (firstTs && lastTs) {
+    console.log(`Total span (hh:mm:ss): ${fmtSeconds((lastTs - firstTs) / 1000)}`);
+  }
+  console.log('');
+  console.log(`Jobs started: ${s.totalJobsStarted}`);
+  console.log(`Success: ${s.successCount} | Failed: ${s.failedCount} | Canceled: ${s.canceledCount} | Pending/incomplete: ${s.pendingCount}`);
+  if (unmatched.successes || unmatched.fails || unmatched.cancels) {
+    console.log(`Unmatched events → Success: ${unmatched.successes}, Fail: ${unmatched.fails}, Cancel: ${unmatched.cancels}`);
+  }
+  console.log('');
+  console.log(`Total reported render time: ${fmtSeconds(s.totalReportedSeconds)} (${s.totalReportedSeconds.toFixed(1)}s)`);
+  console.log(`Total wall render time:     ${fmtSeconds(s.totalWallSeconds)} (${s.totalWallSeconds.toFixed(1)}s)`);
+  console.log(`Total overhead:             ${fmtSeconds(s.totalOverheadSeconds)} (${s.totalOverheadSeconds.toFixed(1)}s)`);
+  if (s.totalWallSeconds > 0) {
+    const pct = (s.totalOverheadSeconds / s.totalWallSeconds) * 100;
+    console.log(`Overhead vs wall:           ${pct.toFixed(2)}%`);
+  }
+  console.log('');
+  console.log(`Avg reported/frame: ${s.avgReportedSeconds != null ? s.avgReportedSeconds.toFixed(3) + 's' : '-'}`);
+  console.log(`Avg wall/frame:     ${s.avgWallSeconds != null ? s.avgWallSeconds.toFixed(3) + 's' : '-'}`);
+  console.log(`Avg overhead/frame: ${s.avgOverheadSeconds != null ? s.avgOverheadSeconds.toFixed(3) + 's' : '-'}`);
+  console.log(`Min/Max reported:   ${s.minReportedSeconds != null ? s.minReportedSeconds.toFixed(3) : '-'}s / ${s.maxReportedSeconds != null ? s.maxReportedSeconds.toFixed(3) : '-'}s`);
+  console.log('');
+  console.log(`Avg init (assets):  ${s.avgAssetsInitSeconds != null ? s.avgAssetsInitSeconds.toFixed(3) + 's' : '-'}`);
+  console.log(`Avg init (core):    ${s.avgCoreInitSeconds != null ? s.avgCoreInitSeconds.toFixed(3) + 's' : '-'}`);
+  console.log(`Avg time→render:    ${s.avgTimeToFirstPixelSeconds != null ? s.avgTimeToFirstPixelSeconds.toFixed(3) + 's' : '-'}`);
+  console.log('');
+  console.log('Top config hashes (by successes):');
+  for (const ph of res.perHash.slice(0, 10)) {
+    const avgRep = avg(ph.reported);
+    const avgWall = avg(ph.wall);
+    console.log(
+      `- ${ph.hash}: success=${ph.success}, failed=${ph.failed}, canceled=${ph.canceled}` +
+      `${avgRep != null ? `, avgReported=${avgRep.toFixed(3)}s` : ''}` +
+      `${avgWall != null ? `, avgWall=${avgWall.toFixed(3)}s` : ''}`
+    );
+  }
+}
+
+if (process.argv.includes('--analyze-log')) {
+  (function analyzeRndrLog() {
+    try {
+      const logPath = path.join(__dirname, 'tools', 'rndr_log.txt');
+      const raw = fs.readFileSync(logPath, 'utf8');
+      const result = parseLog(raw);
+
+      if (process.argv.includes('--json')) {
+        const out = {
+          firstTs: result.firstTs?.toISOString?.() ?? null,
+          lastTs: result.lastTs?.toISOString?.() ?? null,
+          summary: result.summary,
+          unmatched: result.unmatched,
+          perHash: result.perHash
+        };
+        console.log(JSON.stringify(out, null, 2));
+        return;
+      }
+
+      printSummary(result);
+    } catch (err) {
+      console.error('Failed to analyze RNDR log:', err.message);
+      process.exitCode = 1;
+    }
+  })();
+}
